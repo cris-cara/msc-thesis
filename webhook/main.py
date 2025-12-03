@@ -7,27 +7,26 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 
-# Percorso DB: puoi cambiarlo o usare una env var in Azure (es. DB=/home/events.db)
+# DB path: you can change it or use an env var in Azure (e.g. DB=/home/events.db)
 DB_PATH = os.getenv("DB", "events.db")
 
 app = FastAPI()
 
 
 # ---------- Utilities DB ----------
-
 def now_iso() -> str:
-    """Timestamp UTC in formato compatibile con ORDER BY datetime(...)."""
+    """UTC timestamp in a format compatible with ORDER BY datetime(...)."""
     return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def connect() -> sqlite3.Connection:
-    """Apre una connessione SQLite."""
+    """Open a SQLite connection."""
     con = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     return con
 
 
 def ensure_db() -> None:
-    """Crea il DB e la tabella se non esistono."""
+    """Create the DB and the table if they do not exist."""
     con = connect()
     con.executescript(
         """
@@ -38,7 +37,7 @@ def ensure_db() -> None:
           timestamp  TEXT    NOT NULL,
           state      TEXT,
           subject    TEXT,
-          vcd_json   TEXT      -- verifiedCredentialsData serializzato
+          vcd_json   TEXT      -- serialized verifiedCredentialsData
         );
 
         CREATE INDEX IF NOT EXISTS idx_events_req_timestamp
@@ -56,33 +55,33 @@ ensure_db()
 @app.get("/")
 async def root() -> JSONResponse:
     """
-    Wake-up call della webapp su Azure. Da script issuance/verification:
-    - controllare se status == "running" altrimenti raise Exception
+    Wake-up call for the Azure webapp. From the issuance/verification script:
+    - check if status == "running" otherwise raise Exception
     """
     return JSONResponse({"status": "running"})
 
 @app.post("/")
 async def receive(request: Request):
     """
-    Riceve il POST da MS Entra (o chiunque).
-    Salva: requestId, requestStatus, state, subject, verifiedCredentialsData.
-    Alcuni campi possono mancare o essere stringhe vuote.
+    Receive POST from MS Entra (or anyone).
+    Store: requestId, requestStatus, state, subject, verifiedCredentialsData.
+    Some fields may be missing or be empty strings.
     """
     try:
         payload = await request.json()
     except Exception:
-        raise HTTPException(status_code=400, detail="Body non è JSON valido")
+        raise HTTPException(status_code=400, detail="Body is not valid JSON")
 
     request_id = payload.get("requestId")
     if not request_id:
-        raise HTTPException(status_code=400, detail="requestId mancante")
+        raise HTTPException(status_code=400, detail="requestId is missing")
 
-    # Campi opzionali
+    # Optional fields
     status = payload.get("requestStatus") or None
     state = payload.get("state") or None
     subject = payload.get("subject") or None
 
-    # verifiedCredentialsData può mancare
+    # verifiedCredentialsData may be missing
     vcd = payload.get("verifiedCredentialsData")
     vcd_json = json.dumps(vcd) if vcd is not None else None
 
@@ -110,7 +109,7 @@ async def receive(request: Request):
 @app.get("/events/latest")
 def read_latest():
     """
-    Restituisce gli ultimi 10 eventi, ordinati dal più recente al meno recente.
+    Return the last 10 events, ordered from most recent to least recent.
     """
     con = connect()
     con.row_factory = sqlite3.Row
@@ -140,14 +139,14 @@ def read_latest():
 
         events.append(d)
 
-    # anche se non ci sono eventi restituiamo 200 con lista vuota
+    # even if there are no events we return 200 with an empty list
     return JSONResponse({"count": len(events), "events": events})
 
 @app.get("/events/{request_id}")
 def read_by_request_id(request_id: str):
     """
-    Restituisce tutti gli eventi per quel request_id,
-    ordinati per timestamp crescente.
+    Return all events for that request_id,
+    ordered by ascending timestamp.
     """
     con = connect()
     con.row_factory = sqlite3.Row
@@ -165,7 +164,7 @@ def read_by_request_id(request_id: str):
         con.close()
 
     if not rows:
-        raise HTTPException(status_code=404, detail="request_id non trovato")
+        raise HTTPException(status_code=404, detail="request_id not found")
 
     events = []
     for r in rows:
@@ -186,7 +185,7 @@ def read_by_request_id(request_id: str):
 @app.delete("/purge")
 def purge():
     """
-    Cancella tutti i record dalla tabella events.
+    Delete all records from the events table.
     """
     con = connect()
     try:
