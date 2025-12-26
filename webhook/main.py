@@ -1,55 +1,38 @@
-import os
+import os, hmac
 import json
 import sqlite3
 import uvicorn
-from datetime import datetime, timezone
 
+from fastapi import Depends, Security
+from fastapi.security.api_key import APIKeyHeader
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 
-# DB path: you can change it or use an env var in Azure (e.g. DB=/home/events.db)
-DB_PATH = os.getenv("DB", "events.db")
+from db_utilities import connect, ensure_db, now_iso
 
-app = FastAPI()
+# ================= DEBUG =================
+# from dotenv import load_dotenv
+# load_dotenv("webhook.env", override=True)
+# print(f"Loaded webhook.env. CALLBACK_API_KEY={os.getenv('CALLBACK_API_KEY')}")
+# =========================================
 
+# ================= API-KEY header protection =================
+CALLBACK_API_KEY = os.getenv("CALLBACK_API_KEY")
+_api_key_header = APIKeyHeader(name="api-key", auto_error=False)
 
-# ---------- Utilities DB ----------
-def now_iso() -> str:
-    """UTC timestamp in a format compatible with ORDER BY datetime(...)."""
-    return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+def require_api_key(api_key: str | None = Security(_api_key_header)) -> None:
+    # fail-closed
+    if not CALLBACK_API_KEY:
+        raise HTTPException(status_code=500, detail="CALLBACK_API_KEY not set")
 
+    if not api_key or not hmac.compare_digest(api_key, CALLBACK_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized. Provide a valid api-key in the header")
+# =============================================================
 
-def connect() -> sqlite3.Connection:
-    """Open a SQLite connection."""
-    con = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
-    return con
-
-
-def ensure_db() -> None:
-    """Create the DB and the table if they do not exist."""
-    con = connect()
-    con.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS events (
-          id         INTEGER PRIMARY KEY AUTOINCREMENT,
-          request_id TEXT    NOT NULL,
-          status     TEXT,      -- requestStatus
-          timestamp  TEXT    NOT NULL,
-          state      TEXT,
-          subject    TEXT,
-          vcd_json   TEXT      -- serialized verifiedCredentialsData
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_events_req_timestamp
-          ON events(request_id, timestamp);
-        """
-    )
-    con.commit()
-    con.close()
-
-
+# sanity check on the DB
 ensure_db()
 
+app = FastAPI()
 
 # ---------- ROUTES ----------
 @app.get("/")
@@ -60,7 +43,7 @@ async def root() -> JSONResponse:
     """
     return JSONResponse({"status": "running"})
 
-@app.post("/")
+@app.post("/", dependencies=[Depends(require_api_key)])
 async def receive(request: Request):
     """
     Receive POST from MS Entra (or anyone).
@@ -182,7 +165,7 @@ def read_by_request_id(request_id: str):
     return JSONResponse({"request_id": request_id, "events": events})
 
 
-@app.delete("/purge")
+@app.delete("/purge", dependencies=[Depends(require_api_key)])
 def purge():
     """
     Delete all records from the events table.
