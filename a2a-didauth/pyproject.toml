@@ -1,0 +1,25 @@
+[project]
+name = "msc-thesis"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "a2a-sdk[http-server]>=0.3.22",
+    "didcomm>=0.3.1",
+    "dotenv>=0.9.9",
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.9.4",
+    "mcp-weather-server>=0.3.1",
+    "openai>=2.9.0",
+    "pyyaml>=6.0.3",
+    "uvicorn>=0.38.0",
+    "dids-resolver",
+    "pyjwt>=2.10.1",
+]
+
+[tool.uv.workspace]
+members = [
+    "common/dids-resolver",
+]
+
+[tool.uv.sources]
+dids-resolver = { workspace = true, editable = true }
