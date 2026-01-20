@@ -14,22 +14,20 @@ name = "a2a-didauth"
 version = "0.1.0"
 source = { editable = "a2a-didauth" }
 dependencies = [
-    { name = "a2a-sdk", extra = ["http-server"] },
+    { name = "a2a-sdk" },
     { name = "dids-resolver" },
     { name = "httpx" },
     { name = "jwcrypto" },
-    { name = "pyjwt" },
-    { name = "pyyaml" },
+    { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "a2a-sdk", extras = ["http-server"], specifier = ">=0.3.22" },
+    { name = "a2a-sdk", specifier = ">=0.3.22" },
     { name = "dids-resolver", editable = "common/dids-resolver" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jwcrypto", specifier = ">=1.5.6" },
-    { name = "pyjwt", specifier = ">=2.10.1" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "pydantic", specifier = ">=2.0.0" },
 ]
 
 [[package]]

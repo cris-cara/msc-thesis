@@ -1,4 +1,4 @@
-from a2a_didauth.dids import DIDResolver
+from .resolver import DIDResolver
 from dids_resolver import resolve
 
 class DIDResolverDemo(DIDResolver):

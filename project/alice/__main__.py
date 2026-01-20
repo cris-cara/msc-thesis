@@ -1,24 +1,25 @@
-import re
-import json
-import uuid
-import httpx
 import asyncio
-import requests, jwt
-import alice.helpers as helpers
-
-from typing import Any, Optional
-from datetime import datetime, timezone
+import json
+import re
+import uuid
 from dataclasses import asdict
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+import httpx
+import jwt
+import requests
 from jwt.algorithms import ECAlgorithm
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+import alice.helpers as helpers
+from a2a_didauth.adapters.a2a import discover_agent_card, get_did_from_params, get_extension_uri
+from a2a_didauth.core.service import A2ADidAuthService
 from common import config, rehydrate_after_mcp_tool_call, get_logger
 from common.a2a_helpers import build_a2a_request_from_didcomm
 from common.agents import Agent
 from common.waltid_core import WaltIdSession
-
-from a2a_didauth.adapters.a2a import discover_agent_card, get_did_from_params, get_extension_uri
-from a2a_didauth.core.service import A2ADidAuthService
 
 # =================== CONFIG ===================
 cfg = config()
@@ -318,6 +319,9 @@ async def main(city: str):
                 "A2A-Version": "0.3",  # optional but consistent with the spec examples
             }
         )
+
+        #* ----------------------------------- START A2A-DIDAUTH FLOW -----------------------------------
+        A2ADidAuthService.set_ext_uri(ext_uri=ext_uri)
         A2ADidAuthService.set_client(client=bob_https)
 
         # - A2ADIDAuth: PHASE 1
@@ -325,10 +329,19 @@ async def main(city: str):
             #! IMP. choose a random nonce and memorize it also for later (/getAccessToken)
             nonce = str(uuid.uuid4())
 
-            resp = await A2ADidAuthService.send_did_auth_request(client_did=alice.did, nonce=nonce)
+            resp = await A2ADidAuthService.send_did_auth_request(
+                client_did=alice.did,
+                nonce=nonce
+            )
+
+            # retrieve taskId and contextId from the response
+            task_id = resp['result']['id']
+            context_id = resp['result']['contextId']
         except Exception as e:
             # send reject payload and abort operations
-            await A2ADidAuthService.send_did_auth_reject()
+            await A2ADidAuthService.send_did_auth_reject(
+                cause=str(e)
+            )
             raise SystemExit(f"A2ADIDAuth operations aborted: {e}")
 
         # - A2ADIDAuth: PHASE 3 and 4
@@ -343,58 +356,25 @@ async def main(city: str):
             resp = await A2ADidAuthService.send_did_auth_response(
                 a2a_resp=resp,
                 client_did=alice.did,
-                ext_uri=ext_uri,
                 nonce=nonce,
                 signing_key_jwk=private_key
             )
         except Exception as e:
             # send reject payload and abort operations
-            await A2ADidAuthService.send_did_auth_reject()
+            await A2ADidAuthService.send_did_auth_reject(
+                task_id=task_id,
+                context_id=context_id,
+                cause=str(e)
+            )
             raise SystemExit(f"A2ADIDAuth operations aborted: {e}")
 
-
-
-
-
-
-
-        exit()
-        x = {
-            "jsonrpc": "2.0",
-            "id": "req-002",
-            "method": "message/send",
-            "params": {
-                "message": {
-                    "kind": "message",
-                    "role": "user",
-                    "messageId": "msg-user-002",
-                    "taskId": resp['result']['id'],
-                    "contextId": resp['result']['contextId'],
-                    "parts": [{"kind": "data", "data": {}}]
-                },
-                "metadata": {
-                    "https://example.com/extensions/a2a-didauth/v1": {
-                        "op": "response",
-                        "response_jws": "YOUR_RESPONSE_JWS"
-                    }
-                }
-            }
-        }
-
-        resp = await bob_https.post(
-            url="/",
-            json=x
-        )
-
-        print(resp.json())
-
+        print(resp)
+        #* ----------------------------------- END A2A-DIDAUTH FLOW -----------------------------------
 
 
         # -----------------------------------------------------------------------------------------------------------
 
-
         exit()
-        # - PAUSAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
         # [sample] hardcoded logic
         if not agent_card.skills and agent_card.security_schemes['bearer_auth']:
             logger.info(f"{YELLOW}[{alice.__class__.__name__}] No skills found, I have to present a VP, get the access token and then "

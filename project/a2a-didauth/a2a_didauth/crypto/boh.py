@@ -1,1 +1,0 @@
-# crypto/: trasformazioni in oggetti JWK/JWS/JWE, verify/sign, key conversion, curve/alg mapping, ecc.

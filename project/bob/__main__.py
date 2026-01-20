@@ -1,24 +1,21 @@
-import uvicorn
 import asyncio
-
-from typing import Optional
 from dataclasses import asdict
+from typing import Optional
 
-import bob.helpers as helpers
-from bob.mcp.hub import McpHub
-from bob.routes import build_router
-from bob.helpers import AzureOpenAIClient, ProtectExtendedCardMiddleware
-from bob.agent_executor import BobAgentExecutor
-
-from common import config, get_logger
-from common.agents import Agent
-from common import rehydrate_after_mcp_tool_call
-from common.waltid_core import WaltIdSession
-
+import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 
+import bob.helpers as helpers
+from bob.agent_executor import BobAgentExecutor
+from bob.helpers import AzureOpenAIClient, ProtectExtendedCardMiddleware
+from bob.mcp.hub import McpHub
+from bob.routes import build_router
+from common import config, get_logger
+from common import rehydrate_after_mcp_tool_call
+from common.agents import Agent
+from common.waltid_core import WaltIdSession
 from .executor_wrapper import DidAuthExecutorWrapper
 
 # =================== CONFIG ===================
@@ -88,18 +85,15 @@ class Bob(Agent):
 
     async def sign_in(self) -> None:
         """
-        Logs in to WaltID via MCP and initializes user session and default DID.
+        Signs in the user to WaltID via the MCP (Multi-Channel Processing) hub.
 
-        This asynchronous method handles authentication through MCP Hub, initiates a session
-        with WaltID, and sets the default decentralized identifier (DID) for the authenticated user.
+        This asynchronous method performs the authentication and initializes necessary session
+        data for interacting with the WaltID platform. It also retrieves and sets the default
+        Decentralized Identifier (DID) for the user.
 
         Raises:
-            RuntimeError: If MCP hub is not initialized before invoking this method.
-            ValueError: If the default DID cannot be retrieved from WaltID.
-
-        Attributes:
-            waltid_session (WaltIdSession): Stores the authenticated user session after successful login.
-            did (str): The decentralized identifier (DID) associated with the authenticated user.
+            RuntimeError: If the MCP hub is not initialized before calling this method.
+            ValueError: If the DID could not be retrieved after a successful login.
         """
         if not self.mcp_hub:
             raise RuntimeError("MCP hub not initialized. Call mcp_connect() first.")

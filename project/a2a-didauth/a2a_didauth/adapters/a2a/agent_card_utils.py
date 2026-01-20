@@ -1,10 +1,11 @@
-import httpx
-from common import get_logger
-from a2a.client import A2ACardResolver
-from a2a.types import AgentCard
+import logging
 from typing import Optional, Any
 
-logger = get_logger(__name__)
+import httpx
+from a2a.client import A2ACardResolver
+from a2a.types import AgentCard
+
+logger = logging.getLogger(__name__)
 
 def get_extension_uri(card: AgentCard) -> str:
     """

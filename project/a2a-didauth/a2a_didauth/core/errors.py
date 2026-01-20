@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import Optional
+
 
 class A2ADidAuthError(Exception):
     """Base error for DID Auth over A2A."""

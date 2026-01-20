@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import uuid
-from dataclasses import dataclass
-from typing import Any, Optional, Annotated, Literal, Union
+from typing import Annotated, Literal, Union
+
 from pydantic import BaseModel, Field, ConfigDict
+
 
 class _BasePayload(BaseModel):
     #forbid => if an unexpected field arrives, an error is raised

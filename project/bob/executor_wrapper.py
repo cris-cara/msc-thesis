@@ -1,116 +1,21 @@
-from __future__ import annotations
+from typing import Optional
 
-import uuid
-from os.path import sep
-
-from jwcrypto import jwk, jws
-import json
-from dataclasses import dataclass
-from typing import Any, Optional
-
-from common.waltid_core import WaltIdSession
-from bob.mcp.hub import McpHub
-from common import config, rehydrate_after_mcp_tool_call
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 
-from a2a.types import (
-    Message,
-    Part,
-    DataPart,
-    TextPart,
-    Task,
-    TaskStatus,
-    TaskStatusUpdateEvent, TaskState, Role,
-)
-
+import bob.helpers.agent_executor_wrapper as helpers
+from a2a_didauth.adapters.a2a import build_json_rpc_task
+from a2a_didauth.core.service import A2ADidAuthService
 from a2a_didauth.core.session import (
     NonceDIDAuthStatus,
     DIDAuthSession,
     DIDAuthSessionResolver,
     DIDAuthSessionResolverDemo
 )
+from bob.mcp.hub import McpHub
+from common import rehydrate_after_mcp_tool_call
+from common.waltid_core import WaltIdSession
 
-from a2a_didauth.core.service import A2ADidAuthService
-
-
-# =================== CONFIG ===================
-
-# ==============================================
-
-def _get_message(context: RequestContext) -> Message:
-    """Best-effort extraction of the incoming A2A Message."""
-    msg = getattr(context, "message", None)
-    if msg is not None:
-        return msg
-
-    req = getattr(context, "request", None)
-    if req is not None and getattr(req, "message", None) is not None:
-        return req.message
-
-    raise RuntimeError("RequestContext does not contain a message")
-
-def _get_metadata(context: RequestContext) -> dict[str, Any]:
-    """Best-effort extraction of MessageSendParams.metadata."""
-    # 1) some SDK versions expose it directly
-    meta = getattr(context, "metadata", None)
-    if isinstance(meta, dict):
-        return meta
-
-    # 2) official a2a-sdk keeps it on context.request.metadata
-    req = getattr(context, "request", None)
-    meta = getattr(req, "metadata", None) if req is not None else None
-    if isinstance(meta, dict):
-        return meta
-
-    return {}
-
-def _get_task_id(context: RequestContext) -> Optional[str]:
-    # official a2a-sdk: context.task_id
-    tid = getattr(context, "task_id", None)
-    if tid:
-        return tid
-
-    # fallback: context.request.configuration.task_id
-    req = getattr(context, "request", None)
-    cfg = getattr(req, "configuration", None) if req is not None else None
-    return getattr(cfg, "task_id", None) or getattr(cfg, "taskId", None)
-
-def _get_context_id(context: RequestContext) -> Optional[str]:
-    cid = getattr(context, "context_id", None)
-    if cid:
-        return cid
-
-    req = getattr(context, "request", None)
-    cfg = getattr(req, "configuration", None) if req is not None else None
-    return getattr(cfg, "context_id", None) or getattr(cfg, "contextId", None)
-
-def _is_didauth_ext_activated(context: RequestContext, ext_uri: str) -> bool:
-    """
-    Determines if the DID Auth extension is activated within the given request context.
-
-    This function checks whether the specified DID Auth extension URI is included in
-    the requested extensions of the provided context. If the `requested_extensions`
-    attribute is not a set, a `RuntimeError` is raised.
-
-    Args:
-        ext_uri (str): The URI of the extension for DID Auth
-        context (RequestContext): The context object containing requested extensions.
-
-    Returns:
-        bool: True if the DID Auth extension is present in the `requested_extensions`,
-        otherwise False.
-
-    Raises:
-        RuntimeError: If the `requested_extensions` attribute is missing or is not a
-        set.
-    """
-    extensions = getattr(context, "requested_extensions", None)
-
-    if not isinstance(extensions, set):
-        raise RuntimeError("Missing requested_extensions")
-
-    return ext_uri in extensions
 
 class DidAuthExecutorWrapper(AgentExecutor):
     """Wraps an existing executor and intercepts the DID Auth profile-extension flow.
@@ -126,11 +31,11 @@ class DidAuthExecutorWrapper(AgentExecutor):
 
     def __init__(
         self,
+        *,
         inner: AgentExecutor,
         did: str,
         mcp_hub: McpHub,
         waltid_session: WaltIdSession,
-        *,
         ext_uri: str,
         didauth_session_resolver: Optional[DIDAuthSessionResolver] = None
     ) -> None:
@@ -155,10 +60,10 @@ class DidAuthExecutorWrapper(AgentExecutor):
         if not self._didauth_session_resolver:
             self._didauth_session_resolver = DIDAuthSessionResolverDemo(path="bob/didauth_sessions.json")
 
-        meta = _get_metadata(context)
+        meta = helpers.get_metadata(context)
 
-        # - quick re-route to the inner executor (DIDComm flow) if DID Auth is not activated (or not properly activated)
-        if not _is_didauth_ext_activated(context=context, ext_uri=self._ext_uri):
+        #* quick re-route to the inner executor (DIDComm flow) if DID Auth is not activated (or not properly activated)
+        if not helpers.is_didauth_ext_activated(context=context, ext_uri=self._ext_uri):
             await self._inner.execute(context, event_queue)
             return
 
@@ -171,17 +76,23 @@ class DidAuthExecutorWrapper(AgentExecutor):
 
         # get taskId and contextId that the A2A SDK automatically generate and create the DIDAuthSession
         didauth_session = DIDAuthSession(
-            task_id=_get_task_id(context),
-            context_id=_get_context_id(context),
+            task_id=helpers.get_task_id(context),
+            context_id=helpers.get_context_id(context),
         )
 
-        # ------------------------ ROUTING DID Auth operations ------------------------
+        #* ------------------------ ROUTING DID Auth operations ------------------------
         op = ext_meta.get("op")
         if op not in ('begin', 'reject', 'response'):
             raise RuntimeError(f"Unknown did_auth op: {op}")
 
+        # instantiate the A2ADIDAuth service with the extension URI
+        A2ADidAuthService.set_ext_uri(ext_uri=self._ext_uri)
+
         if op == "reject":
-            raise RuntimeError("DID Auth rejected by user")
+            print(context.message)
+
+            # update the internal storage (mark nonce as rejected)
+            self._didauth_session_resolver.mark_rejected(task_id=didauth_session.task_id)
 
         if op == "begin":
             # - A2ADIDAuth: PHASE 2
@@ -195,24 +106,38 @@ class DidAuthExecutorWrapper(AgentExecutor):
             didauth_session.nonce = nonce
             didauth_session.nonce_status = NonceDIDAuthStatus.PENDING
 
-            # retrieve signing key (private) from waltid
-            signing_key_jwk = await self.get_signing_key_from_waltid()
+            try:
+                # retrieve signing key (private) from waltid
+                signing_key_jwk = await self.get_signing_key_from_waltid()
 
-            # build the task
-            task = A2ADidAuthService.build_did_auth_challenge_task(
-                iss_did=self._did,
-                ext_uri=self._ext_uri,
-                session=didauth_session,
-                signing_key_jwk=signing_key_jwk
-            )
+                # build the task
+                task = A2ADidAuthService.build_did_auth_challenge_task(
+                    iss_did=self._did,
+                    session=didauth_session,
+                    signing_key_jwk=signing_key_jwk
+                )
+                print(task)
 
-            await event_queue.enqueue_event(task)
+                await event_queue.enqueue_event(task)
 
-            # update the internal storage
-            self._didauth_session_resolver.put(
-                task_id=didauth_session.task_id,
-                session=didauth_session
-            )
+                # update the internal storage
+                self._didauth_session_resolver.put(
+                    task_id=didauth_session.task_id,
+                    session=didauth_session,
+                )
+            except Exception as e:
+                # send reject Task and abort operations
+                task = build_json_rpc_task(
+                    ext_uri=self._ext_uri,
+                    op="reject",
+                    session=didauth_session,
+                    cause=str(e)
+                )
+
+                await event_queue.enqueue_event(task)
+
+                # update the internal storage (mark nonce as rejected)
+                self._didauth_session_resolver.mark_rejected(task_id=didauth_session.task_id)
 
             return
 
@@ -222,13 +147,35 @@ class DidAuthExecutorWrapper(AgentExecutor):
             if not response_jws:
                 raise RuntimeError("Missing response_jws in extension metadata")
 
-            print(response_jws)
+            # retrieve session from internal storage
+            current_session = self._didauth_session_resolver.get(task_id=didauth_session.task_id)
 
-            task = A2ADidAuthService.build_did_auth_verify_task(
-                jws_response=response_jws
-            )
+            try:
+                task = A2ADidAuthService.build_did_auth_verify_task(
+                    jws_response=response_jws,
+                    session=current_session,
+                    session_resolver=self._didauth_session_resolver,
+                    server_did=self._did,
+                )
+                print(task)
+                await event_queue.enqueue_event(task)
 
-            await event_queue.enqueue_event(task)
+                # update the internal storage (mark nonce as authenticated)
+                self._didauth_session_resolver.mark_authenticated(task_id=didauth_session.task_id)
+            except Exception as e:
+                # send reject Task and abort operations
+                task = build_json_rpc_task(
+                    ext_uri=self._ext_uri,
+                    op="reject",
+                    session=didauth_session,
+                    cause=str(e)
+                )
+
+                await event_queue.enqueue_event(task)
+
+                # update the internal storage (mark nonce as rejected)
+                self._didauth_session_resolver.mark_rejected(task_id=didauth_session.task_id)
+
             return
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
