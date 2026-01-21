@@ -1,0 +1,50 @@
+{
+  "16e5f74a-88b7-420d-b803-43dc63430e31": {
+    "client_did": "did:jwk:eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2Iiwia2lkIjoiZDQ5UFAzQ2oycnQwX0Rha2stN3VvQzFpS1I5QXNrQkpIN1lrTFFXRW9vUSIsIngiOiJFQzZIRzhOWlZLSy1EaVVQY3NkWktnUGxxbUpFMVVHZmJsbkRwSHBjcTZrIiwieSI6IjBfV1lrN2ljMk12ekd1WWJtOWJBcjM0Vkxkb2F4VndscVZUTjVIMmhlRmMifQ",
+    "context_id": "435cc53e-9919-41e3-934e-7384c134c7af",
+    "expires_at": 1771168169,
+    "nonce": "4954191a-a16f-4840-8800-bfa27c247866",
+    "status": "used",
+    "task_id": "16e5f74a-88b7-420d-b803-43dc63430e31"
+  },
+  "34faf377-1255-4adb-a3fe-4ae30b593b25": {
+    "client_did": "did:jwk:eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2Iiwia2lkIjoiZDQ5UFAzQ2oycnQwX0Rha2stN3VvQzFpS1I5QXNrQkpIN1lrTFFXRW9vUSIsIngiOiJFQzZIRzhOWlZLSy1EaVVQY3NkWktnUGxxbUpFMVVHZmJsbkRwSHBjcTZrIiwieSI6IjBfV1lrN2ljMk12ekd1WWJtOWJBcjM0Vkxkb2F4VndscVZUTjVIMmhlRmMifQ",
+    "context_id": "8bd050af-e877-432b-99a0-e8f8be19a2e0",
+    "expires_at": 1771168169,
+    "nonce": "93a3f0d0-7849-4d04-9791-6308b8fc0dbd",
+    "status": "used",
+    "task_id": "34faf377-1255-4adb-a3fe-4ae30b593b25"
+  },
+  "65b1ae87-f6a0-4112-9d4a-49b6df7d36f5": {
+    "client_did": "did:jwk:eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2Iiwia2lkIjoiZDQ5UFAzQ2oycnQwX0Rha2stN3VvQzFpS1I5QXNrQkpIN1lrTFFXRW9vUSIsIngiOiJFQzZIRzhOWlZLSy1EaVVQY3NkWktnUGxxbUpFMVVHZmJsbkRwSHBjcTZrIiwieSI6IjBfV1lrN2ljMk12ekd1WWJtOWJBcjM0Vkxkb2F4VndscVZUTjVIMmhlRmMifQ",
+    "context_id": "002ef1aa-83d1-4ea4-abf3-e9cde32b20cd",
+    "expires_at": 1771168169,
+    "nonce": "8962cfe7-cad7-46b7-af51-fbd72756b26e",
+    "status": "used",
+    "task_id": "65b1ae87-f6a0-4112-9d4a-49b6df7d36f5"
+  },
+  "80caa822-8094-4a43-8f94-d8bc915da307": {
+    "client_did": "did:jwk:eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2Iiwia2lkIjoiZDQ5UFAzQ2oycnQwX0Rha2stN3VvQzFpS1I5QXNrQkpIN1lrTFFXRW9vUSIsIngiOiJFQzZIRzhOWlZLSy1EaVVQY3NkWktnUGxxbUpFMVVHZmJsbkRwSHBjcTZrIiwieSI6IjBfV1lrN2ljMk12ekd1WWJtOWJBcjM0Vkxkb2F4VndscVZUTjVIMmhlRmMifQ",
+    "context_id": "b591bb7b-b2e0-423a-98d3-6402e52ee524",
+    "expires_at": 1771168169,
+    "nonce": "25bcbd74-44a8-4349-9f1b-9007041a19d5",
+    "status": "used",
+    "task_id": "80caa822-8094-4a43-8f94-d8bc915da307"
+  },
+  "ecd20f3f-0234-43f0-b37e-984d5fb5da69": {
+    "client_did": "did:jwk:eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2Iiwia2lkIjoiZDQ5UFAzQ2oycnQwX0Rha2stN3VvQzFpS1I5QXNrQkpIN1lrTFFXRW9vUSIsIngiOiJFQzZIRzhOWlZLSy1EaVVQY3NkWktnUGxxbUpFMVVHZmJsbkRwSHBjcTZrIiwieSI6IjBfV1lrN2ljMk12ekd1WWJtOWJBcjM0Vkxkb2F4VndscVZUTjVIMmhlRmMifQ",
+    "context_id": "ef85af91-c2f6-4190-a84b-4120b65a8c17",
+    "expires_at": 1771168169,
+    "nonce": "9d107df5-9c77-457e-8768-a363643635cd",
+    "status": "used",
+    "task_id": "ecd20f3f-0234-43f0-b37e-984d5fb5da69"
+  },
+  "f6a574f9-f0b8-446d-90bd-7007c4b93f9a": {
+    "client_did": "did:jwk:eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2Iiwia2lkIjoiZDQ5UFAzQ2oycnQwX0Rha2stN3VvQzFpS1I5QXNrQkpIN1lrTFFXRW9vUSIsIngiOiJFQzZIRzhOWlZLSy1EaVVQY3NkWktnUGxxbUpFMVVHZmJsbkRwSHBjcTZrIiwieSI6IjBfV1lrN2ljMk12ekd1WWJtOWJBcjM0Vkxkb2F4VndscVZUTjVIMmhlRmMifQ",
+    "context_id": "c3cb048f-278a-44ed-9354-a543356944ff",
+    "expires_at": 1771168169,
+    "nonce": "4407bbca-6df1-4174-b5f0-85a25403f24a",
+    "status": "used",
+    "task_id": "f6a574f9-f0b8-446d-90bd-7007c4b93f9a"
+  }
+}

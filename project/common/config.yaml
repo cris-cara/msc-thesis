@@ -17,6 +17,7 @@ DIDs:
 A2A:
   bob_base_url: "https://localhost:8443"
   a2a_did_auth_uri: "https://example.com/extensions/a2a-didauth/v1"
+  didcomm_format: "application/didcomm-encrypted+json"
 
 MSEntraID:
   az_tenant_id: "070bd82a-c7ba-4bed-bc50-3dca476dc820"

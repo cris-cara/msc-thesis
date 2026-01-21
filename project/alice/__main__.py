@@ -321,10 +321,12 @@ async def main(city: str):
         )
 
         #* ----------------------------------- START A2A-DIDAUTH FLOW -----------------------------------
+        logger.info(f"{YELLOW}[{alice.__class__.__name__}] START A2A-didauth flow...{RESET}")
+
         A2ADidAuthService.set_ext_uri(ext_uri=ext_uri)
         A2ADidAuthService.set_client(client=bob_https)
 
-        # - A2ADIDAuth: PHASE 1
+        #* - A2ADIDAuth: PHASE 1
         try:
             #! IMP. choose a random nonce and memorize it also for later (/getAccessToken)
             nonce = str(uuid.uuid4())
@@ -344,7 +346,7 @@ async def main(city: str):
             )
             raise SystemExit(f"A2ADIDAuth operations aborted: {e}")
 
-        # - A2ADIDAuth: PHASE 3 and 4
+        #* - A2ADIDAuth: PHASE 3 and 4
         try:
             # retrieve the private key from waltid wallet
             result = await alice.mcp_session.call_tool(
@@ -368,17 +370,15 @@ async def main(city: str):
             )
             raise SystemExit(f"A2ADIDAuth operations aborted: {e}")
 
-        print(resp)
+        logger.info(f"{YELLOW}[{alice.__class__.__name__}] END A2A-didauth flow. Mutual authentication "
+                    f"successful!{RESET}")
         #* ----------------------------------- END A2A-DIDAUTH FLOW -----------------------------------
 
-
-        # -----------------------------------------------------------------------------------------------------------
-
-        exit()
+        #* ----------------------------------- START AUTHORIZATION VIA VP -----------------------------------
         # [sample] hardcoded logic
-        if not agent_card.skills and agent_card.security_schemes['bearer_auth']:
-            logger.info(f"{YELLOW}[{alice.__class__.__name__}] No skills found, I have to present a VP, get the access token and then "
-                        f"retrieve the authenticated extended card...{RESET}")
+        if not agent_card.skills or agent_card.security_schemes['bearer_auth']:
+            logger.info(f"{YELLOW}[{alice.__class__.__name__}] No skills found in AgentCard, I have to present a VP, "
+                        f"get the access token and then retrieve the Authenticated Extended Card...{RESET}")
 
         # ask Bob to send a presentation request
         try:
@@ -398,7 +398,12 @@ async def main(city: str):
         try:
             resp = await bob_https.post(
                 url="/getAccessToken",
-                json={"did_subject": alice.did, "request_id": request_id},
+                json={
+                    "did_subject": alice.did,
+                    "MS_request_id": request_id,
+                    "didauth_task_id": task_id,
+                    "didauth_nonce": nonce,
+                },
             )
             resp.raise_for_status()
             access_token = resp.json().get("access_token")
@@ -427,6 +432,19 @@ async def main(city: str):
                 raise ValueError("No skills found in the authenticated extended card")
         except httpx.HTTPStatusError as e:
             raise SystemExit(f"Unable to retrieve the extended agent card: {e}")
+
+        #* ----------------------------------- END AUTHORIZATION VIA VP -----------------------------------
+
+
+
+
+
+
+
+
+
+
+
 
         # -: ========================= BEGIN APPLICATION FLOW =========================
         # 1) Build DIDComm JWE to send to Bob

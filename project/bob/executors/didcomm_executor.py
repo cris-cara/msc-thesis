@@ -84,7 +84,7 @@ def _validate_and_get_jwe(a2a_msg: A2AMessage):
 
 # - ============================================
 
-class BobAgentExecutor(AgentExecutor):
+class DIDCommExecutor(AgentExecutor):
     def __init__(self,
                  did: str,
                  llm_client: AzureOpenAI,

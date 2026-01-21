@@ -8,15 +8,16 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 
 import bob.helpers as helpers
-from bob.agent_executor import BobAgentExecutor
 from bob.helpers import AzureOpenAIClient, ProtectExtendedCardMiddleware
+from bob.executors.didcomm_executor import DIDCommExecutor
 from bob.mcp.hub import McpHub
 from bob.routes import build_router
 from common import config, get_logger
 from common import rehydrate_after_mcp_tool_call
 from common.agents import Agent
 from common.waltid_core import WaltIdSession
-from .executor_wrapper import DidAuthExecutorWrapper
+from bob.executors.a2a_didauth_executor import A2ADidAuthExecutor
+from bob.executors.router_agent_executor import RouterAgentExecutor
 
 # =================== CONFIG ===================
 cfg = config()
@@ -136,8 +137,8 @@ async def main():
         # set the resolvers_config for DIDComm library
         bob.set_resolvers_config()
 
-        # build Bob agent executor
-        executor = BobAgentExecutor(
+        # build DIDComm agent executor
+        didcomm_executor = DIDCommExecutor(
             did=bob.did,
             llm_client=bob.llm["client"],
             mcp_hub=bob.mcp_hub,
@@ -146,24 +147,30 @@ async def main():
             resolvers_cfg=bob.resolvers_config,
         )
 
-        # create Bob agent card (both public and extended)
-        public_agent_card = helpers.create_agent_card(BOB_BASE_URL,did=BOB_DID, authenticated=False)
-        extended_agent_card = helpers.create_agent_card(BOB_BASE_URL, did=BOB_DID, authenticated=True)  # skills=[weather_didcomm]
-
-        # initialize A2A server
-        wrapped_executor = DidAuthExecutorWrapper(
-            inner=executor,
+        # build A2A DIDAuth executor
+        a2a_didauth_executor = A2ADidAuthExecutor(
             did=bob.did,
             mcp_hub=bob.mcp_hub,
             waltid_session=bob.waltid_session,
             ext_uri=EXT_URI,  # a2a-didauth extensions URI
         )
 
-        request_handler = DefaultRequestHandler(
-            agent_executor=wrapped_executor,
-            task_store=InMemoryTaskStore(),
+        # build Router agent executor
+        router_executor = RouterAgentExecutor(
+            didcomm_executor=didcomm_executor,
+            a2a_didauth_executor=a2a_didauth_executor,
+            ext_uri=EXT_URI,
         )
 
+        # create Bob agent card (both public and extended)
+        public_agent_card = helpers.create_agent_card(BOB_BASE_URL,did=BOB_DID, authenticated=False)
+        extended_agent_card = helpers.create_agent_card(BOB_BASE_URL, did=BOB_DID, authenticated=True)  # skills=[weather_didcomm]
+
+        # initialize A2A server
+        request_handler = DefaultRequestHandler(
+            agent_executor=router_executor,
+            task_store=InMemoryTaskStore(),
+        )
         server_app = A2AStarletteApplication(
             http_handler=request_handler,
             agent_card=public_agent_card,

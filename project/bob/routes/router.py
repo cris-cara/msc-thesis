@@ -7,6 +7,8 @@ from bob.helpers import auth_utils as auth
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route, Router
+from a2a_didauth.core.session import DIDAuthSessionResolverDemo, NonceDIDAuthStatus
+from bob.routes.utils import fetch_callback
 
 # =================== CONFIG ===================
 load_dotenv(".env", override=True)
@@ -77,29 +79,15 @@ async def _get_presentation_request(request: Request) -> JSONResponse:
 
 async def _get_access_token(request: Request) -> JSONResponse:
     """
-    Handles the asynchronous generation of an access token based on the incoming request
-    data and validation criteria.
 
-    The function validates the incoming request payload, ensures the coherence between the
-    subject DID and session data, checks the validity of the associated callback, and
-    manages the issuance of access tokens. Database operations are carried out for cleanup,
-    session verification, token reservation, and token issuance. Failures in validation or
-    token generation are appropriately handled and corresponding error responses are
-    returned.
-
-    Args:
-        request (Request): The incoming HTTP request containing payload data required for
-            generating an access token.
-
-    Returns:
-        JSONResponse: A JSON response containing either the generated access token with its
-            type or an error message with an appropriate HTTP status code.
     """
     try:
         body = await read_json(request)
         payload = GetAccessTokenIn.model_validate(body)
-        incoming_subject_did = payload .did_subject.strip()
-        incoming_request_id = payload .request_id.strip()
+        incoming_subject_did = payload.did_subject.strip()
+        incoming_request_id = payload.MS_request_id.strip()
+        incoming_didauth_task_id = payload.didauth_task_id.strip()
+        didauth_incoming_nonce = payload.didauth_nonce.strip()
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -107,6 +95,10 @@ async def _get_access_token(request: Request) -> JSONResponse:
         return JSONResponse({"error": "did_subject is required"}, status_code=400)
     if not incoming_request_id:
         return JSONResponse({"error": "request_id is required"}, status_code=400)
+    if not incoming_didauth_task_id:
+        return JSONResponse({"error": "didauth_task_id is required"}, status_code=400)
+    if not didauth_incoming_nonce:
+        return JSONResponse({"error": "nonce is required"}, status_code=400)
 
     now_iso = now_utc().isoformat()
     _db.cleanup_expired(now_iso)
@@ -134,6 +126,23 @@ async def _get_access_token(request: Request) -> JSONResponse:
     ):
         return JSONResponse({"error": "Invalid callback"}, status_code=400)
 
+    #! check if the nonce is authenticated and that corresponds to the incoming_holder_did
+    try:
+        didauth_session_resolver = DIDAuthSessionResolverDemo(path="bob/didauth_sessions.json")
+        didauth_session = didauth_session_resolver.get(task_id=incoming_didauth_task_id)
+        expected_nonce = didauth_session.nonce
+
+        if expected_nonce != didauth_incoming_nonce:
+            return JSONResponse({"error": "Nonce mismatch"}, status_code=401)
+
+        if didauth_session.nonce_status != NonceDIDAuthStatus.AUTHENTICATED:
+            return JSONResponse({"error": "Session associated with this nonce not authenticated"}, status_code=401)
+
+        if didauth_session.client_did != incoming_subject_did:
+            return JSONResponse({"error": "Client DID mismatch"}, status_code=403)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
     # ---------------- DB operations ----------------
     # mark the presentation with the associated request_id as verified
     _db.set_status(incoming_request_id, "presentation_verified", last_update_at=now_iso)
@@ -156,6 +165,17 @@ async def _get_access_token(request: Request) -> JSONResponse:
         token = auth.create_access_token(incoming_subject_did)
     except Exception as e:
         _db.unreserve_token_issue(incoming_request_id, now_iso=now_utc().isoformat())
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    #! set nonce status to used and session.expires_at at the time the presented VC expires
+    try:
+        exp_date = fetch_callback.fetch_expiration_epoch(request_id=incoming_request_id) # in epoch
+        # set nonce status to used
+        didauth_session_resolver.mark_used(task_id=incoming_didauth_task_id)
+
+        # set session.expires_at
+        didauth_session_resolver.set_expiry(task_id=incoming_didauth_task_id, expires_at=exp_date)
+    except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
     return JSONResponse({"access_token": token, "token_type": "Bearer"})

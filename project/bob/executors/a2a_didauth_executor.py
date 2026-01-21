@@ -3,7 +3,7 @@ from typing import Optional
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 
-import bob.helpers.agent_executor_wrapper as helpers
+import bob.helpers.a2a_context_utils as helpers
 from a2a_didauth.adapters.a2a import build_json_rpc_task
 from a2a_didauth.core.service import A2ADidAuthService
 from a2a_didauth.core.session import (
@@ -17,7 +17,7 @@ from common import rehydrate_after_mcp_tool_call
 from common.waltid_core import WaltIdSession
 
 
-class DidAuthExecutorWrapper(AgentExecutor):
+class A2ADidAuthExecutor(AgentExecutor):
     """Wraps an existing executor and intercepts the DID Auth profile-extension flow.
 
     Pattern:
@@ -32,14 +32,12 @@ class DidAuthExecutorWrapper(AgentExecutor):
     def __init__(
         self,
         *,
-        inner: AgentExecutor,
         did: str,
         mcp_hub: McpHub,
         waltid_session: WaltIdSession,
         ext_uri: str,
         didauth_session_resolver: Optional[DIDAuthSessionResolver] = None
     ) -> None:
-        self._inner = inner
         self._did = did
         self._mcp_hub=mcp_hub
         self._waltid_session = waltid_session
@@ -61,11 +59,6 @@ class DidAuthExecutorWrapper(AgentExecutor):
             self._didauth_session_resolver = DIDAuthSessionResolverDemo(path="bob/didauth_sessions.json")
 
         meta = helpers.get_metadata(context)
-
-        #* quick re-route to the inner executor (DIDComm flow) if DID Auth is not activated (or not properly activated)
-        if not helpers.is_didauth_ext_activated(context=context, ext_uri=self._ext_uri):
-            await self._inner.execute(context, event_queue)
-            return
 
         # Extension is activated: require extension-specific metadata container.
         ext_meta = meta.get(self._ext_uri)
@@ -179,5 +172,5 @@ class DidAuthExecutorWrapper(AgentExecutor):
             return
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        # Delegate cancel to inner (if needed)
-        await self._inner.cancel(context, event_queue)
+        # as of now, I don't handle cancel
+        raise Exception("Cancel not supported")

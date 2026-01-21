@@ -28,8 +28,12 @@ class GetAccessTokenIn(BaseModel):
     Attributes:
         did_subject (str): The decentralized identifier (DID) subject associated
             with the access token request.
-        request_id (str): A unique identifier for the access token request.
+        MS_request_id (str): A unique identifier for the MS Entra ID request.
+        didauth_task_id (str): The task ID associated with the a2a-didauth flow.
+        didauth_nonce (str): A random string that comes from Phase 1 of a2a-didauth flow
     """
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     did_subject: str
-    request_id: str
+    MS_request_id: str
+    didauth_task_id: str
+    didauth_nonce: str
