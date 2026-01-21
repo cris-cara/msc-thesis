@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Optional
@@ -31,6 +31,7 @@ class DIDAuthSession:
     nonce: Optional[str] = None
     client_did: Optional[str] = None
     nonce_status: Optional[NonceDIDAuthStatus] = None
+    expires_at: Optional[int] = None  # <-- (epoch seconds)
 
 
 class DIDAuthSessionResolver(ABC):
@@ -41,6 +42,10 @@ class DIDAuthSessionResolver(ABC):
     @abstractmethod
     def put(self, task_id: str, session: DIDAuthSession) -> None:
         """Persist (or overwrite) the session stored under `task_id`."""
+        pass
+
+    @abstractmethod
+    def set_expiry(self, task_id: str, expires_at: int) -> None:
         pass
 
     @abstractmethod
@@ -108,24 +113,28 @@ class DIDAuthSessionResolverDemo(DIDAuthSessionResolver):
             "nonce": session.nonce,
             "client_did": session.client_did,
             "status": session.nonce_status.value,  # StrEnum -> string
+            "expires_at": session.expires_at,  # <-- NEW
         }
 
     @staticmethod
     def _deserialize_session(task_id: str, obj: dict[str, Any]) -> DIDAuthSession:
         try:
-            # Backward-compat: if task_id/context_id weren't stored yet, recover
-            # `task_id` from the JSON map key and default `context_id` to "".
+            raw_status = obj.get("status", NonceDIDAuthStatus.PENDING.value)
+            nonce_status = (
+                None if raw_status is None else NonceDIDAuthStatus(str(raw_status))
+            )
+
+            raw_exp = obj.get("expires_at")
+            expires_at = None if raw_exp is None else int(raw_exp)
+
             return DIDAuthSession(
                 task_id=str(obj.get("task_id") or task_id),
                 context_id=str(obj.get("context_id") or ""),
-                nonce=str(obj["nonce"]),
-                client_did=str(obj["client_did"]),
-                nonce_status=NonceDIDAuthStatus(
-                    str(obj.get("status", NonceDIDAuthStatus.PENDING.value))
-                ),
+                nonce=(None if obj.get("nonce") is None else str(obj.get("nonce"))),
+                client_did=(None if obj.get("client_did") is None else str(obj.get("client_did"))),
+                nonce_status=nonce_status,
+                expires_at=expires_at,  # <-- NEW
             )
-        except KeyError as e:
-            raise ValueError(f"Missing field in stored session: {e}") from e
         except Exception as e:
             raise ValueError(f"Invalid stored session format: {obj}") from e
 
@@ -157,6 +166,15 @@ class DIDAuthSessionResolverDemo(DIDAuthSessionResolver):
             )
         data[task_id] = self._serialize_session(session)
         self._atomic_write(data)
+
+    def set_expiry(self, task_id: str, expires_at: int | None) -> None:
+        """
+        Set/clear expiry for an existing session.
+        expires_at: unix timestamp in seconds; None to remove expiry.
+        """
+        session = self.get(task_id)
+        updated = replace(session, expires_at=expires_at)
+        self.put(task_id, updated)
 
     def mark_authenticated(self, task_id: str) -> None:
         self._update_status(task_id, NonceDIDAuthStatus.AUTHENTICATED)
