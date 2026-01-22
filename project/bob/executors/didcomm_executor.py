@@ -1,22 +1,25 @@
 import json
 import uuid
-import bob.helpers.auth_utils as auth
-
 from typing import Any, Dict, Optional
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
-from a2a.types import Message as A2AMessage, DataPart
-
+from a2a.types import (
+    Message as A2AMessage,
+    DataPart,
+    TaskState
+)
+from didcomm.common.resolvers import ResolversConfig
 from didcomm.message import Message as DidcommMessage
 from didcomm.pack_encrypted import pack_encrypted, PackEncryptedConfig
 from didcomm.unpack import unpack
-from didcomm.common.resolvers import ResolversConfig
-
 from openai import AzureOpenAI
+
+import bob.helpers.a2a_context_utils as helpers
+import bob.helpers.auth_utils as auth
 from bob.mcp.hub import McpHub
 from common import config, get_logger
-from common.a2a_helpers import build_a2a_message_from_didcomm
+from common.a2a_helpers import build_a2a_response_task_from_didcomm
 
 # =================== CONFIG ===================
 cfg = config()
@@ -25,6 +28,7 @@ ALICE_DID = cfg["DIDs"]["alice"]
 BOB_DID = cfg["DIDs"]["bob"]
 
 GREEN = cfg["colors"]["GREEN"]
+CYAN = cfg["colors"]["CYAN"]
 BLUE = cfg["colors"]["BLUE"]
 RED = cfg["colors"]["RED"]
 RESET = cfg["colors"]["RESET"]
@@ -257,34 +261,37 @@ class DIDCommExecutor(AgentExecutor):
         a2a_msg: A2AMessage = context.message
 
         logger.info(
-            f"\n{'=' * 10} Received JSON-RPC request from Alice {'=' * 10}\n"
-            f"{a2a_msg}\n"
+            f"\n{CYAN}{'=' * 10} Received JSON-RPC request from Alice {'=' * 10}"
+            f"\n{a2a_msg}{RESET}"
         )
 
         # validate and get the JWE payload
         jwe_str = _validate_and_get_jwe(a2a_msg)
 
         # process the DIDComm request and get the JWE reply
-        reply_jwe = await self._build_didcomm_weather_response(jwe_str=jwe_str)
+        task_state: TaskState
+        didcomm_response_jwe: dict = {}
+        try:
+            didcomm_response_jwe = await self._build_didcomm_weather_response(jwe_str=jwe_str)
+            task_state = TaskState.completed
+        except Exception as e:
+            task_state = TaskState.failed
+            logger.info(f"Error processing DIDComm request: {e}")
 
-        # build the JSON RPC response from the DIDComm reply
-        """Convention: matching is done via A2A `message_id`.
-        Sender: remember which `message_id` was sent.
-        Receiver: set `response_message_id = request_message_id` when building the A2A message response.
-        Note: JSON-RPC `id` may differ; intentionally ignored it in this demo."""
-        reply_a2a_msg = build_a2a_message_from_didcomm(
-            jwe_json=reply_jwe,
-            message_id=a2a_msg.message_id,  # the initial request's message_id chosen Alice (set `response_message_id = request_message_id`)
-            context_id=context.context_id,
-            task_id=context.task_id,
+        # build the A2A response Task from the JWE reply
+        task = build_a2a_response_task_from_didcomm(
+            task_state=task_state,
+            didcomm_jwe_resp=didcomm_response_jwe,
+            task_id=helpers.get_task_id(context=context),
+            context_id=helpers.get_context_id(context=context)
         )
 
-        # send the A2A message response to Alice
-        await event_queue.enqueue_event(reply_a2a_msg)
+        # send the A2A response to Alice
+        await event_queue.enqueue_event(task)
 
         logger.info(
-            f"\n{'=' * 10} A2A message/send response sent to Alice {'=' * 10}\n"
-            f"{reply_a2a_msg}\n"
+            f"\n{CYAN}{'=' * 10} A2A response sent to Alice {'=' * 10}"
+            f"\n{task}{RESET}"
         )
 
     async def cancel(

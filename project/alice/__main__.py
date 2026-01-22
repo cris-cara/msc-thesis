@@ -17,7 +17,7 @@ import alice.helpers as helpers
 from a2a_didauth.adapters.a2a import discover_agent_card, get_did_from_params, get_extension_uri
 from a2a_didauth.core.service import A2ADidAuthService
 from common import config, rehydrate_after_mcp_tool_call, get_logger
-from common.a2a_helpers import build_a2a_request_from_didcomm
+from common.a2a_helpers import build_a2a_send_request_from_didcomm
 from common.agents import Agent
 from common.waltid_core import WaltIdSession
 
@@ -320,6 +320,7 @@ async def main(city: str):
             }
         )
 
+
         #* ----------------------------------- START A2A-DIDAUTH FLOW -----------------------------------
         logger.info(f"{YELLOW}[{alice.__class__.__name__}] START A2A-didauth flow...{RESET}")
 
@@ -436,17 +437,7 @@ async def main(city: str):
         #* ----------------------------------- END AUTHORIZATION VIA VP -----------------------------------
 
 
-
-
-
-
-
-
-
-
-
-
-        # -: ========================= BEGIN APPLICATION FLOW =========================
+        #* -------------------------------- START DIDCOMM APPLICATION FLOW  -------------------------------
         # 1) Build DIDComm JWE to send to Bob
         jwe_request_json = await helpers.build_didcomm_weather_request(
             sender_did = alice.did,
@@ -457,15 +448,15 @@ async def main(city: str):
         )
 
         # 2) Wrap DIDComm JWE in A2A JSON-RPC request
-        # TODO: DA CAMBIARE VOGLIO IL JSON RPC ID CORRELATION
-        """Convention: matching is done via A2A `message_id`.
-        Sender: remember which `message_id` was sent.
-        Receiver: set `response_message_id = request_message_id` when building the A2A message response.
-        Note: JSON-RPC `id` may differ; intentionally ignored it in this demo."""
-        msg_id = str(uuid.uuid4())
-        jsonrpc_request = build_a2a_request_from_didcomm(
-            jwe_json=jwe_request_json,
-            message_id=msg_id,
+        """
+        Correlation matching is done via `json_rpc_id`:
+            - Alice (client): remember which `json_rpc_id` was sent
+            - Bob (server): set automatically the `json_rpc_id` (SDK feature)
+        """
+        json_rpc_id = str(uuid.uuid4())
+        jsonrpc_request = build_a2a_send_request_from_didcomm(
+            json_rpc_id=json_rpc_id,
+            didcomm_jwe_req=jwe_request_json,
         )
 
         logger.info(f"{BLUE}\n{'=' * 10} Sending A2A message/send request {'=' * 10}"
@@ -491,7 +482,7 @@ async def main(city: str):
 
         # 4) Validate and unpack Bob's DIDComm reply
         jwe_reply_str = helpers.validate_and_get_jwe(
-            target_id=msg_id,
+            target_json_rp_id=json_rpc_id,
             jsonrpc_response=jsonrpc_response
         )
 
@@ -504,6 +495,8 @@ async def main(city: str):
         logger.info(f"{MAGENTA}\n{'=' * 10} Unpacked DIDComm body from Bob {'=' * 10}"
             f"\n{json.dumps(body, ensure_ascii=False)}\n{RESET}"
         )
+
+        #* -------------------------------- END DIDCOMM APPLICATION FLOW  -------------------------------
 
     except Exception as e:
         raise SystemExit(f"Error: {e}")

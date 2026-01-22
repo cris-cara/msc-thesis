@@ -1,75 +1,84 @@
 import uuid
-from typing import Literal, Optional
+from typing import Optional
 
-Role = Literal["user", "agent"]
+from a2a.types import (
+    Message,
+    MessageSendParams,
+    SendMessageRequest,
+)
+from a2a.types import (
+    Part,
+    DataPart,
+    Role,
+)
 
-def build_a2a_request_from_didcomm(
-    jwe_json: dict,
+from common.config import config
+
+# =================== CONFIG ===================
+cfg = config()
+
+DIDCOMM_FORMAT = cfg["A2A"]["didcomm_format"]
+# ==============================================
+
+def build_a2a_send_request_from_didcomm(
+    json_rpc_id: str,
+    didcomm_jwe_req: dict,
     *,
-    role: Role = "user",
-    message_id: Optional[str] = None,
-    rpc_id: Optional[str] = None,
+    role: Optional[Role] = Role.user,
     task_id: Optional[str] = None,
     context_id: Optional[str] = None,
-    message_metadata: Optional[dict] = None,
-    request_metadata: Optional[dict] = None,
+    metadata: Optional[dict] = None,
 ) -> dict:
     """
-    Builds a JSON-RPC request for sending a DIDComm encrypted message.
+    Builds an A2A (agent-to-agent) send request from a DIDComm (Decentralized Identifier Communication)
+    JSON Web Encryption (JWE) request.
 
-    This function constructs a properly formatted JSON-RPC request payload
-    for sending a DIDComm encrypted message with optional metadata and
-    custom identifiers. It allows specification of various identifiers
-    that can be used for task tracking and message contextualization.
+    This function constructs a properly formatted dictionary representing an A2A send request
+    using the given DIDComm JWE request and other optional parameters such as role, task ID, context
+    ID, and metadata. The function creates a hierarchical message structure, converts it into the required
+    JSON-RPC format, and returns a serialized representation of the request.
 
-    Parameters:
-        jwe_json (dict): The JWE formatted as a dictionary that represents the
-            encrypted DIDComm message.
-        role (Role): The role of the sender for the message. Defaults to "user".
-        message_id (Optional[str]): A unique identifier for the message. If not
-            provided, a UUID will be generated automatically.
-        rpc_id (Optional[str]): A unique identifier for the JSON-RPC request. If
-            not provided, a UUID will be generated automatically.
-        task_id (Optional[str]): An optional identifier associated with a task.
-        context_id (Optional[str]): An optional identifier to provide context for
-            the message.
-        message_metadata (Optional[dict]): Additional metadata related to the message.
-        request_metadata (Optional[dict]): Additional metadata for the JSON-RPC request.
+    Args:
+        json_rpc_id (str): A unique identifier for the JSON-RPC request.
+        didcomm_jwe_req (dict): The DIDComm JWE object containing the core payload and associated encryption.
+        role (Optional[Role]): Specifies the role, with a default value of Role.user.
+        task_id (Optional[str]): Optional task identifier to associate with the message.
+        context_id (Optional[str]): Optional context identifier for the message's processing scope.
+        metadata (Optional[dict]): Additional metadata to include in the request payload.
 
     Returns:
-        dict: A dictionary representing the JSON-RPC request payload.
+        dict: A dictionary representing the A2A send request in JSON-RPC format, excluding any fields with None values.
     """
-
-    message_id = message_id or uuid.uuid4().hex
-    rpc_id = rpc_id or str(uuid.uuid4())
-
-    a2a_message = {
-        "kind": "message",
-        "role": role,
-        "messageId": message_id,
-        "parts": [{
-            "kind": "data",
-            "data": {
-                "didcomm": {
-                    "format": "application/didcomm-encrypted+json",
-                    "jwe": jwe_json,
-                }
-            },
-        }],
+    data = {
+        "didcomm":
+            {
+                "format": DIDCOMM_FORMAT,
+                "jwe": didcomm_jwe_req
+            }
     }
-    if task_id:
-        a2a_message["taskId"] = task_id
-    if context_id:
-        a2a_message["contextId"] = context_id
-    if message_metadata:
-        a2a_message["metadata"] = message_metadata
 
-    return {
-        "jsonrpc": "2.0",
-        "id": rpc_id,
-        "method": "message/send",
-        "params": {
-            "message": a2a_message,
-            **({"metadata": request_metadata} if request_metadata else {}),
-        },
-    }
+    msg = Message(
+        message_id=str(uuid.uuid4()),
+        role=role,
+        task_id=task_id,
+        context_id=context_id,
+        parts=[
+            Part(
+                root=DataPart(
+                    data=data
+                )
+            )
+        ],
+    )
+
+    json_rpc = SendMessageRequest(
+        id=json_rpc_id,
+        params=MessageSendParams(
+            message=msg,
+            metadata=metadata,
+        ),
+    )
+
+    a2a_didcomm_request = json_rpc.model_dump(mode="json", exclude_none=True)
+
+    return a2a_didcomm_request

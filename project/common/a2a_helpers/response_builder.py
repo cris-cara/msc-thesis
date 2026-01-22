@@ -1,56 +1,79 @@
 import uuid
 from typing import Optional
-from a2a.types import Message as A2AMessage, Part, DataPart, Role
 
-def build_a2a_message_from_didcomm(
-    jwe_json: dict,
+from a2a.types import (
+    Part,
+    DataPart,
+    Task,
+    TaskStatus,
+    TaskState, Artifact,
+)
+
+from common.config import config
+
+# =================== CONFIG ===================
+cfg = config()
+
+DIDCOMM_FORMAT = cfg["A2A"]["didcomm_format"]
+# ==============================================
+
+def build_a2a_response_task_from_didcomm(
+    task_state: TaskState,
+    didcomm_jwe_resp: dict,
     *,
-    message_id: Optional[str] = None,
     task_id: Optional[str] = None,
     context_id: Optional[str] = None,
     metadata: Optional[dict] = None,
 ):
     """
-    Builds an A2A message from a DIDComm JWE JSON payload.
+    Builds a task object representing an a2a response from a DIDComm message.
 
-    This function constructs an A2AMessage object using the provided DIDComm JWE
-    JSON payload. It allows for optional customization of the message ID, task ID,
-    context ID, and metadata. If the message ID is not provided, a new unique
-    identifier is automatically generated. The function encapsulates the DIDComm
-    payload in a specific format to ensure compatibility with A2A messaging systems.
+    This function is designed to create a Task object containing details about an
+    a2a response constructed using a DIDComm JWE payload. The task encapsulates
+    contextual information, metadata, and artifacts related to the provided DIDComm
+    response. This structure allows for consistent representation and handling of
+    responses within a task-oriented system.
 
-    Arguments:
-        jwe_json (dict): The DIDComm JWE JSON payload containing encrypted
-            information to be included in the A2A message.
-        message_id (Optional[str]): An optional unique identifier for the message.
-            If not provided, a new one is generated.
-        task_id (Optional[str]): An optional identifier for the task associated
-            with the message.
-        context_id (Optional[str]): An optional identifier for the context in which
-            the message is being sent.
-        metadata (Optional[dict]): Optional additional metadata to include with
-            the message.
+    Parameters:
+    task_state (TaskState): Represents the state of the task (e.g., pending, completed).
+    didcomm_jwe_resp (dict): The DIDComm JWE response payload.
+    task_id (Optional[str], optional): The unique identifier for the task. Defaults to None.
+    context_id (Optional[str], optional): A contextual identifier for the task, allowing linkage to higher-level
+                                           operations or workflows. Defaults to None.
+    metadata (Optional[dict], optional): Additional metadata to include in the task. Defaults to None.
 
     Returns:
-        A2AMessage: The constructed A2AMessage containing the encapsulated DIDComm
-        JWE payload and any additional information provided.
+    Task: An object that encapsulates the provided DIDComm response details, task state,
+              metadata, and associated artifacts.
     """
-    message_id = message_id or uuid.uuid4().hex
-
-    reply_data_part = DataPart(
-        data={
-            "didcomm": {
-                "format": "application/didcomm-encrypted+json",
-                "jwe": jwe_json,
+    data = {
+        "didcomm":
+            {
+                "format": DIDCOMM_FORMAT,
+                "jwe": didcomm_jwe_resp
             }
-        }
+    }
+
+    didcomm_artifact = Artifact(
+        artifact_id=str(uuid.uuid4()),
+        name="didcomm_response",
+        parts=[
+            Part(
+                root=DataPart(
+                    data=data
+                )
+            )
+        ],
     )
 
-    return A2AMessage(
-        role=Role.agent,
-        message_id=message_id,
-        parts=[Part(root=reply_data_part)],
+    task = Task(
+        id=task_id,
         context_id=context_id,
-        task_id=task_id,
+        status=TaskStatus(
+            state=task_state
+        ),
+        artifacts = [didcomm_artifact],
         metadata=metadata,
     )
+
+    return task

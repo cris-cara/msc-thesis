@@ -1,8 +1,8 @@
 import json
 import uuid
 
-from didcomm.message import Message as DidcommMessage
 from didcomm.common.resolvers import ResolversConfig
+from didcomm.message import Message as DidcommMessage
 from didcomm.pack_encrypted import pack_encrypted, PackEncryptedConfig
 from didcomm.unpack import unpack
 
@@ -16,44 +16,45 @@ BOB_BASE_URL = cfg["A2A"]["bob_base_url"]
 BASE_URL = cfg["waltid"]["base_url"]
 # ==============================================
 
-def validate_and_get_jwe(target_id: str, jsonrpc_response: dict) -> str:
+def validate_and_get_jwe(target_json_rp_id: str, jsonrpc_response: dict) -> str:
     """
-    Validates the response from a JSON-RPC call and extracts the JSON Web Encryption (JWE) data.
+    Validates the consistency and structure of a JSON-RPC response and extracts the JWE
+    (JSON Web Encryption) data field if it exists.
 
-    This function checks for potential errors in a JSON-RPC response, validates the
-    message ID, and ensures that the response contains expected structure and data.
-    It specifically focuses on extracting the JWE field from a DIDComm container
-    within the response.
+    This function ensures the provided JSON-RPC response matches the expected message ID, contains
+    no errors, and adheres to the expected data format. If any of these conditions are unmet, a
+    RuntimeError is raised.
 
     Parameters:
-    target_id: str
-        The expected message ID to be matched against the response.
-    jsonrpc_response: dict
-        The JSON-RPC response object containing the data to validate and process.
-
-    Returns:
-    str
-        A JSON-formatted string of the JWE data extracted from the response.
+    target_json_rp_id: The ID of the originally sent JSON-RPC message, used to verify the response ID.
+    jsonrpc_response: The JSON-RPC response dictionary received, expected to include artifacts and
+                      DIDComm-related data.
 
     Raises:
-    RuntimeError
-        If the response contains an error, has mismatched message ID, or lacks the
-        expected structure or data required to extract the JWE.
+    RuntimeError: Raised in the following cases:
+        - The JSON-RPC response contains an "error" field.
+        - The "id" field in the response does not match the expected target_json_rp_id.
+        - The response does not include valid artifacts with parts.
+        - The parts list in the response does not include an expected "data" kind.
+        - The "data" in the part does not contain a "jwe" field.
+
+    Returns:
+    String containing the extracted JWE data encoded as JSON.
     """
     # handling JSON-RPC errors
     if "error" in jsonrpc_response:
         raise RuntimeError(f"A2A error from Bob: {jsonrpc_response['error']}")
 
+    # check if the message IDs match
+    resp_json_rpc_id = jsonrpc_response.get("id")
+    if resp_json_rpc_id != target_json_rp_id:
+        raise RuntimeError(f"ID mismatch! Expected {target_json_rp_id}, got {resp_json_rpc_id}")
+
     result = jsonrpc_response.get("result") or {}
 
-    # check if the message IDs match
-    resp_id = jsonrpc_response.get("result").get("messageId")
-    if resp_id != target_id:
-        raise RuntimeError(f"ID mismatch! Expected {target_id}, got {resp_id}")
+    artifacts: list = result.get("artifacts") or result
 
-    message = result.get("message") or result
-
-    parts = message.get("parts") or []
+    parts: list = artifacts[0].get("parts") or []
     if not parts:
         raise RuntimeError("A2A response has no parts")
 

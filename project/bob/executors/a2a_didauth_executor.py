@@ -13,22 +13,21 @@ from a2a_didauth.core.session import (
     DIDAuthSessionResolverDemo
 )
 from bob.mcp.hub import McpHub
+from common import config, get_logger
 from common import rehydrate_after_mcp_tool_call
 from common.waltid_core import WaltIdSession
 
+# =================== CONFIG ===================
+cfg = config()
+
+RED = cfg["colors"]["RED"]
+CYAN = cfg["colors"]["CYAN"]
+RESET = cfg["colors"]["RESET"]
+
+logger = get_logger(__name__)  # get a logger instance
+# ==============================================
 
 class A2ADidAuthExecutor(AgentExecutor):
-    """Wraps an existing executor and intercepts the DID Auth profile-extension flow.
-
-    Pattern:
-    - If extension is not activated -> delegate to inner.
-    - If activated:
-      * First message (no taskId) -> create Task in INPUT_REQUIRED with a challenge.
-      * Next message (same taskId) -> verify response and complete the task.
-
-    No while/loop is needed: multi-turn is expressed through Task + subsequent message/send calls.
-    """
-
     def __init__(
         self,
         *,
@@ -82,8 +81,7 @@ class A2ADidAuthExecutor(AgentExecutor):
         A2ADidAuthService.set_ext_uri(ext_uri=self._ext_uri)
 
         if op == "reject":
-            print(context.message)
-
+            logger.info(f"{RED}[{self.__class__.__name__}] Rejecting DID Auth request...{RESET}")
             # update the internal storage (mark nonce as rejected)
             self._didauth_session_resolver.mark_rejected(task_id=didauth_session.task_id)
 
@@ -109,8 +107,9 @@ class A2ADidAuthExecutor(AgentExecutor):
                     session=didauth_session,
                     signing_key_jwk=signing_key_jwk
                 )
-                print(task)
 
+                logger.info(f"\n{CYAN}[{self.__class__.__name__}] {'=' * 10} Sending task A2A-DIDAUTH CHALLENGE {'=' * 10}"
+                            f"\n{task}{RESET}")
                 await event_queue.enqueue_event(task)
 
                 # update the internal storage
@@ -127,6 +126,7 @@ class A2ADidAuthExecutor(AgentExecutor):
                     cause=str(e)
                 )
 
+                logger.info(f"{RED}[{self.__class__.__name__}] Rejecting DID Auth request...{RESET}")
                 await event_queue.enqueue_event(task)
 
                 # update the internal storage (mark nonce as rejected)
@@ -150,7 +150,9 @@ class A2ADidAuthExecutor(AgentExecutor):
                     session_resolver=self._didauth_session_resolver,
                     server_did=self._did,
                 )
-                print(task)
+
+                logger.info(f"\n{CYAN}[{self.__class__.__name__}] {'=' * 10} Sending task A2A-DIDAUTH COMPLETE {'=' * 10}"
+                            f"\n{task}{RESET}")
                 await event_queue.enqueue_event(task)
 
                 # update the internal storage (mark nonce as authenticated)
@@ -164,6 +166,7 @@ class A2ADidAuthExecutor(AgentExecutor):
                     cause=str(e)
                 )
 
+                logger.info(f"{RED}[{self.__class__.__name__}] Rejecting DID Auth request...{RESET}")
                 await event_queue.enqueue_event(task)
 
                 # update the internal storage (mark nonce as rejected)
