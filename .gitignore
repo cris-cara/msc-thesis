@@ -4,3 +4,7 @@
 __pycache__/
 *.env
 *.egg-info/
+
+# Bob's internal memory
+project/bob/didauth_sessions.json
+project/bob/vc_sessions.sqlite3
