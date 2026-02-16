@@ -26,7 +26,7 @@ MSEntraID:
   issuer_api_url: "https://verifiedid.did.msidentity.com/v1.0/verifiableCredentials/createIssuanceRequest"
   verifier_api_url: "https://verifiedid.did.msidentity.com/v1.0/verifiableCredentials/createPresentationRequest"
   did_authority: "did:web:stgacctestdid.z38.web.core.windows.net"
-  manifest: "https://verifiedid.did.msidentity.com/v1.0/tenants/070bd82a-c7ba-4bed-bc50-3dca476dc820/verifiableCredentials/contracts/ac297af7-9061-096d-25be-f4b73ee7e37d/manifest"
+  manifest: "https://verifiedid.did.msidentity.com/v1.0/tenants/070bd82a-c7ba-4bed-bc50-3dca476dc820/verifiableCredentials/contracts/8f689f18-c594-088a-3931-feb264bf9712/manifest"
   callback_url: "https://callback-webhook.azurewebsites.net/"
 
 colors:

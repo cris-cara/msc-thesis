@@ -155,7 +155,7 @@ class Alice(Agent):
             raise ValueError("Presentation request has expired")
 
         # extract request_id and request_uri from presentation_request
-        request_id = presentation_request["requestId"]  # TODO: da rimandare indietro
+        request_id = presentation_request["requestId"]
         try:
             req_uri = re.search(r'request_uri=([^ ]+)', presentation_request["url"]).group(1)
         except AttributeError as e:
@@ -171,6 +171,12 @@ class Alice(Agent):
         data = pres_req_obj["claims"]["vp_token"]["presentation_definition"]
         presentation_def = {**data, "input_descriptors": [{k: v for k, v in d.items() if k != "schema"} for d in
                                                   data.get("input_descriptors", [])]}
+        for item in presentation_def["input_descriptors"][0]["constraints"]["fields"]:
+            if item["path"] == ['$.vc.credentialSubject.admin']:
+                # substitute 'pattern': '/^true$/gi' with 'pattern': 'true' (respectively with 'false')
+                m = re.search(r'^/\^(true|false)\$/gi$', item["filter"]["pattern"], flags=re.I)
+                item["filter"]["pattern"] = m.group(1) if m else None
+
         tool_result = await self.mcp_session.call_tool(
             name="match_creds_for_pres_def",
             arguments={"session": self.waltid_session, "presentation_definition": presentation_def}

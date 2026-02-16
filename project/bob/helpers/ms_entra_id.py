@@ -106,20 +106,26 @@ def create_presentation_request(state: str) -> dict[str, Union[str, int]]:
             }
         },
         "registration": {
-            "clientName": "Veritable Credential Expert Verifier"
+            "clientName": "MS Entra Verified ID"
         },
         "includeReceipt": False,
         "requestedCredentials": [
             {
-                "type": "VerifiedCredentialExpert",
-                "purpose": "So we can see that you a veritable credentials expert",
+                "type": "AdminCredential",
+                "purpose": "To verify that you have admin authorization",
                 "acceptedIssuers": [DID_AUTHORITY],
                 "configuration": {
                     "validation": {
-                        "allowRevoked": True,
+                        "allowRevoked": False,
                         "validateLinkedDomain": True
                     }
-                }
+                },
+                "constraints": [
+                    {
+                        "claimName": "admin",
+                        "values": ["true"]
+                    }
+                ]
             }
         ]
     }
