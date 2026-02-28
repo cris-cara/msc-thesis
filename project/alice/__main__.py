@@ -36,7 +36,7 @@ logger = get_logger(__name__)  # Get a logger instance
 
 class Alice(Agent):
     def __init__(self):
-        super().__init__("alice/alice.env")
+        super().__init__(env_file_path="project/alice/alice.env")
         self.mcp_session: ClientSession | None = None
 
     async def mcp_connect(self, command: str, args: Optional[list[str]] = None) -> None:
