@@ -1,105 +1,88 @@
 import ssl
 import sys
-from pathlib import Path
 import uuid
+from pathlib import Path
+
 import httpx
 import pytest
+import pytest_asyncio
+
+from a2a_didauth.core.errors import A2ADidAuthError
 from a2a_didauth.core.service import A2ADidAuthService
 from alice.__main__ import Alice
+from common import rehydrate_after_mcp_tool_call
 from common.agents import Agent
 from common.config import config
-from common import rehydrate_after_mcp_tool_call
-
-BOOT = Path(__file__).resolve().parent / "_run_waltid_server.py"
 
 # =================== CONFIG ===================
-cfg = config()
+BOOT = Path(__file__).resolve().parent / "_run_waltid_server.py"
+IMPERSONATION_DID = "did:jwk:eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2Iiwia2lkIjoiUkx2eTIyTDZLcG5SNnd5T1BOelktNUdPcHVwS3hhQzdpRGdXcE4xSk9UQSIsIngiOiJ3TGI1OFdBZGhGalhmXzBUMUJLNmRzVGZ3VWRFODhUdmJwV2U1VFo1c0VVIiwieSI6IndUN01nWW16UGJHaFBpTzFEaklZTk9LdS1DYUoxY2U4d2pweTJfQmhPV1EifQ"
 
+cfg = config()
 BOB_BASE_URL = cfg["A2A"]["bob_base_url"]
 EXT_URI = cfg["A2A"]["a2a_did_auth_uri"]
 # ==============================================
 
-async def _initialize(agent: Agent):
-    # initialize reusable httpx client
-    bob_https = httpx.AsyncClient(
+@pytest_asyncio.fixture
+async def bob_https():
+    """ Initialize Bob's HTTP client."""
+    client = httpx.AsyncClient(
         base_url=BOB_BASE_URL,
         verify=ssl.create_default_context(cafile="project/bob/certs/bob-cert.pem"),
         timeout=httpx.Timeout(10.0),
     )
-
-    # connect to the MCP waltid server
-    await agent.mcp_connect(
-        command=sys.executable,
-        args=[str(BOOT)],
-    )
-
-    # authenticate to waltId wallet
-    await agent.sign_in()
-    # set the resolvers_config for DIDComm library
-    agent.set_resolvers_config()
-
-    # update and set the BOB client HTTPS
-    bob_https.headers.update(
+    client.headers.update(
         {
-            "A2A-Extensions": EXT_URI,  # activates the extension for this request
-            "X-A2A-Extensions": EXT_URI,  # ! IMP for backward compatibility
-            "A2A-Version": "0.3",  # optional but consistent with the spec examples
+            "A2A-Extensions": EXT_URI,
+            "X-A2A-Extensions": EXT_URI,
+            "A2A-Version": "0.3",
         }
     )
 
-    return bob_https
+    yield client
+    await client.aclose()
+
+@pytest_asyncio.fixture
+async def alice():
+    """ Initialize Alice agent."""
+    alice = Alice()
+    await alice.mcp_connect(
+        command=sys.executable,
+        args=[str(BOOT)],
+    )
+    await alice.sign_in()
+    alice.set_resolvers_config()
+
+    yield alice
 
 @pytest.mark.asyncio
-async def test_impersonation():
-    alice = Alice()
-
-    bob_https = await _initialize(alice)
-
+async def test_impersonation(alice: Agent, bob_https: httpx.AsyncClient):
     A2ADidAuthService.set_ext_uri(ext_uri=EXT_URI)
     A2ADidAuthService.set_client(client=bob_https)
 
-#* - A2ADIDAuth: PHASE 1
-    try:
-        #! IMP. choose a random nonce and memorize it also for later (/getAccessToken)
-        nonce = str(uuid.uuid4())
-
-        resp = await A2ADidAuthService.send_did_auth_request(
-            client_did=alice.did,
-            nonce=nonce
-        )
-
-        # retrieve taskId and contextId from the response
-        task_id = resp['result']['id']
-        context_id = resp['result']['contextId']
-    except Exception as e:
-        # send reject payload and abort operations
-        await A2ADidAuthService.send_did_auth_reject(
-            cause=str(e)
-        )
-        raise SystemExit(f"A2ADIDAuth operations aborted: {e}")
+    #* - A2ADIDAuth: PHASE 1
+    nonce = str(uuid.uuid4())
+    resp = await A2ADidAuthService.send_did_auth_request(
+        client_did=alice.did,
+        nonce=nonce
+    )
 
     #* - A2ADIDAuth: PHASE 3 and 4
-    try:
-        # retrieve the private key from waltid wallet
-        result = await alice.mcp_session.call_tool(
-            name="export_key_jwk",
-            arguments={"session": alice.waltid_session, "load_private": True}
-        )
-        private_key = rehydrate_after_mcp_tool_call(result, dict)
+    # retrieve the private key from waltid wallet
+    result = await alice.mcp_session.call_tool(
+        name="export_key_jwk",
+        arguments={"session": alice.waltid_session, "load_private": True}
+    )
+    private_key = rehydrate_after_mcp_tool_call(result, dict)
 
-        resp = await A2ADidAuthService.send_did_auth_response(
+    with pytest.raises(A2ADidAuthError) as exif:
+        await A2ADidAuthService.send_did_auth_response(
             a2a_resp=resp,
-            client_did=alice.did,
+            client_did=IMPERSONATION_DID, #! IMP. change DID to simulate impersonation attack
             nonce=nonce,
-            signing_key_jwk=private_key
+            signing_key_jwk=private_key,
         )
-    except Exception as e:
-        # send reject payload and abort operations
-        await A2ADidAuthService.send_did_auth_reject(
-            task_id=task_id,
-            context_id=context_id,
-            cause=str(e)
-        )
-        raise SystemExit(f"A2ADIDAuth operations aborted: {e}")
 
-    assert 1 == 1
+    msg = str(exif.value)
+    assert "Error while verifying challenge JWS:" in msg
+    assert "Mismatch between DID in header and aud in payload" in msg
