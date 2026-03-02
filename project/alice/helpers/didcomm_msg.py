@@ -70,6 +70,50 @@ def validate_and_get_jwe(target_json_rp_id: str, jsonrpc_response: dict) -> str:
 
     return json.dumps(jwe_reply_json)
 
+async def build_get_access_token_request(sender_did: str, body: dict, resolvers_cfg: ResolversConfig) -> dict:
+    """
+    Creates and returns an access token request message packed using DIDComm encryption.
+
+    The function generates a DIDComm message with the specified sender DID, message
+    body, and recipient DID. It then encrypts the message using the provided
+    resolvers configuration and packing options. The encrypted message is returned
+    as a dictionary after being converted from a JSON string.
+
+    Parameters:
+    sender_did: str
+        The DID of the sender of the message.
+    body: dict
+        The body content of the message to be included in the DIDComm message.
+    resolvers_cfg: ResolversConfig
+        The configuration used for resolving cryptographic keys during packing.
+
+    Returns:
+    dict
+        A dictionary representation of the encrypted and packed DIDComm message.
+    """
+    didcomm_msg = DidcommMessage(
+        id=str(uuid.uuid4()),
+        type="example/1.0/weather-request",
+        body=body,
+        frm=sender_did,
+        to=[BOB_DID],
+    )
+
+    pack_result = await pack_encrypted(
+        resolvers_config=resolvers_cfg,
+        message=didcomm_msg,
+        frm=sender_did,
+        to=BOB_DID,
+        sign_frm=None,
+        pack_config=PackEncryptedConfig(
+            protect_sender_id=False,
+            forward=False,
+        ),
+    )
+
+    # packed_msg is a JSON string; cast into dict
+    return json.loads(pack_result.packed_msg)
+
 async def build_didcomm_weather_request(sender_did: str, city: str, access_token: str, resolvers_cfg: ResolversConfig) -> dict:
     """
     Builds a DIDComm message for requesting weather information, encrypts it, and returns the packed

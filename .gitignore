@@ -4,6 +4,7 @@
 __pycache__/
 *.env
 *.egg-info/
+.pytest_cache/
 
 # Bob's internal memory
 project/bob/didauth_sessions.json

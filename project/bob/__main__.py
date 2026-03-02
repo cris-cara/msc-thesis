@@ -44,7 +44,7 @@ class Bob(Agent):
     Attributes:
         mcp_hub (McpHub): Represents an instance of the"""
     def __init__(self):
-        super().__init__("bob/bob.env")
+        super().__init__(env_file_path="bob/bob.env")
         self.mcp_hub: McpHub = McpHub()
         self.llm: AzureOpenAIClient = helpers.create_azure_openai_client()
 
@@ -188,7 +188,7 @@ async def main():
         # attach routes from bob/routes/router.py
         # {'POST'} / getPresentationRequest
         # {'POST'} / getAccessToken
-        router = build_router()
+        router = build_router(resolver_config=bob.resolvers_config)
         app.router.routes.extend(router.routes)
 
         server_cfg = uvicorn.Config(
