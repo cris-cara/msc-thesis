@@ -1,14 +1,18 @@
 import os
 import uuid
+from functools import partial
 
+from didcomm.common.resolvers import ResolversConfig
+from didcomm.unpack import unpack
 from dotenv import load_dotenv
-from .utils import *
-from bob.helpers import auth_utils as auth
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route, Router
+
 from a2a_didauth.core.session import DIDAuthSessionResolverDemo, NonceDIDAuthStatus
+from bob.helpers import auth_utils as auth
 from bob.routes.utils import fetch_callback
+from .utils import *
 
 # =================== CONFIG ===================
 load_dotenv(".env", override=True)
@@ -77,12 +81,40 @@ async def _get_presentation_request(request: Request) -> JSONResponse:
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
-async def _get_access_token(request: Request) -> JSONResponse:
+async def _get_access_token(request: Request, resolvers_cfg: ResolversConfig) -> JSONResponse:
     """
+    Handles the process of validating and issuing an access token based on a DIDComm message.
+
+    Upon receiving a DIDComm message, the function unpacks it and validates the payload for the expected
+    fields, ensuring coherence between the sender's DID and the did_subject. It verifies the authenticity
+    of the nonce and performs database operations to manage token issuance.
+
+    Attributes:
+        None
+
+    Parameters:
+        request (Request): The HTTP request object containing the DIDComm message.
+        resolvers_cfg (ResolversConfig): Configuration settings for the DIDComm message resolvers.
+
+    Returns:
+        JSONResponse: HTTP response with either the issued access token or an error message.
+
+    Raises:
+        StatusCodeException: Contains specific response codes and messages for different validation failures or errors.
 
     """
+    # get the didcomm payload and unpack it
+    jwe_request = await read_json(request)
+    unpack_result = await unpack(
+        resolvers_config=resolvers_cfg,
+        packed_msg=jwe_request,
+    )
+
+    # retrieve the real DID of the sender and the body
+    did_sender = unpack_result.message.frm.strip()
+    body = unpack_result.message.body
+
     try:
-        body = await read_json(request)
         payload = GetAccessTokenIn.model_validate(body)
         incoming_subject_did = payload.did_subject.strip()
         incoming_request_id = payload.MS_request_id.strip()
@@ -127,10 +159,15 @@ async def _get_access_token(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Invalid callback"}, status_code=400)
 
     #! check if the nonce is authenticated and that corresponds to the incoming_holder_did
+    #! check also if the sender in the didcomm unpacked message match the incoming_subject_did field
     try:
         didauth_session_resolver = DIDAuthSessionResolverDemo(path="bob/didauth_sessions.json")
         didauth_session = didauth_session_resolver.get(task_id=incoming_didauth_task_id)
         expected_nonce = didauth_session.nonce
+
+        if not did_sender == incoming_subject_did:
+            # if the actual sender of the didcomm msg IS NOT the one declared in the body 'did_subject' --> REPLAY ATTACK!
+            return JSONResponse({"error": "Sender DID mismatch"}, status_code=403)
 
         if expected_nonce != didauth_incoming_nonce:
             return JSONResponse({"error": "Nonce mismatch"}, status_code=401)
@@ -180,11 +217,11 @@ async def _get_access_token(request: Request) -> JSONResponse:
 
     return JSONResponse({"access_token": token, "token_type": "Bearer"})
 
-def build_router() -> Router:
+def build_router(resolver_config: ResolversConfig) -> Router:
     """Builds the Starlette router for the HTTP API endpoints."""
     return Router(
         routes=[
             Route("/getPresentationRequest", _get_presentation_request, methods=["POST"]),
-            Route("/getAccessToken", _get_access_token, methods=["POST"]),
+            Route("/getAccessToken", partial(_get_access_token, resolvers_cfg=resolver_config), methods=["POST"]),
         ]
     )

@@ -36,7 +36,7 @@ logger = get_logger(__name__)  # Get a logger instance
 
 class Alice(Agent):
     def __init__(self):
-        super().__init__("alice/alice.env")
+        super().__init__(env_file_path="alice/alice.env")
         self.mcp_session: ClientSession | None = None
 
     async def mcp_connect(self, command: str, args: Optional[list[str]] = None) -> None:
@@ -403,14 +403,20 @@ async def main(city: str):
 
         # ask Bob to send the access token after the VP submission
         try:
-            resp = await bob_https.post(
-                url="/getAccessToken",
-                json={
+            jwe_request_json = await helpers.build_get_access_token_request(
+                sender_did=alice.did,
+                body={
                     "did_subject": alice.did,
                     "MS_request_id": request_id,
                     "didauth_task_id": task_id,
                     "didauth_nonce": nonce,
                 },
+                resolvers_cfg=alice.resolvers_config
+            )
+
+            resp = await bob_https.post(
+                url="/getAccessToken",
+                json=jwe_request_json,
             )
             resp.raise_for_status()
             access_token = resp.json().get("access_token")
