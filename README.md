@@ -16,3 +16,8 @@ From the top level directory (```msc-thesis/```):
 ```bash
 pytest -q .\test\test_*.py
 ```
+
+Optionally, if you want to enable ```print()``` in tests:
+```bash
+pytest -q -s .\test\test_*.py
+```
