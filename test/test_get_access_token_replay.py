@@ -55,7 +55,7 @@ async def bob_https():
     await client.aclose()
 
 @pytest.mark.asyncio
-async def test_vp_token_replay_attack(eve_mitm, bob_https: httpx.AsyncClient):
+async def test_replay_attack_get_access_token(eve_mitm, bob_https: httpx.AsyncClient):
     # * assume that the MITM stole a valid Microsoft Entra request_id and an entry of
     # * 'bob/didauth_sessions.json'
     didauth_session_trace = {
