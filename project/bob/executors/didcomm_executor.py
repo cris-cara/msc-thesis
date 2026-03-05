@@ -249,14 +249,14 @@ class DIDCommExecutor(AgentExecutor):
             type="example/1.0/weather-response",
             body=response_content,
             frm=self.did, # BOB DID
-            to=[ALICE_DID],
+            to=[sender_did],
         )
 
         pack_result = await pack_encrypted(
             resolvers_config=self.resolvers_cfg,
             message=reply,
             frm=self.did, # BOB DID
-            to=ALICE_DID,
+            to=sender_did,
             sign_frm=None,
             pack_config=PackEncryptedConfig(
                 protect_sender_id=False,
