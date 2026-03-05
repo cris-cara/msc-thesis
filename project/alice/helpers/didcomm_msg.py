@@ -93,7 +93,7 @@ async def build_get_access_token_request(sender_did: str, body: dict, resolvers_
     """
     didcomm_msg = DidcommMessage(
         id=str(uuid.uuid4()),
-        type="example/1.0/weather-request",
+        type="example/1.0/access-token-request",
         body=body,
         frm=sender_did,
         to=[BOB_DID],

@@ -1,12 +1,13 @@
-import os
-import jwt
-import json
 import datetime
-from dotenv import load_dotenv
+import json
+import os
 from typing import Optional
+
+import jwt
+from dotenv import load_dotenv
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 # =================== CONFIG ===================
 load_dotenv("bob/bob.env", override=True)
@@ -104,3 +105,8 @@ def verify_token(token: str) -> Optional[dict]:
         return payload
     except jwt.PyJWTError:
         return None
+
+def retrieve_sub_from_token(token: str) -> Optional[str]:
+    """Extracts the subject (user ID) from a JWT access token."""
+    payload = verify_token(token)
+    return payload.get("sub") if payload else None
