@@ -9,6 +9,7 @@ from typing import Any, Optional
 import httpx
 import jwt
 import requests
+from didcomm.unpack import unpack
 from jwt.algorithms import ECAlgorithm
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -414,12 +415,20 @@ async def main(city: str):
                 resolvers_cfg=alice.resolvers_config
             )
 
+            # send the request to Bob
             resp = await bob_https.post(
                 url="/getAccessToken",
                 json=jwe_request_json,
             )
             resp.raise_for_status()
-            access_token = resp.json().get("access_token")
+
+            # decrypt the access token encapsulated in the response as a didcomm message
+            unpack_result = await unpack(
+                resolvers_config=alice.resolvers_config,
+                packed_msg=resp.json(),
+            )
+
+            access_token = unpack_result.message.body.get("access_token")
             logger.info(f"{GREEN}[{alice.__class__.__name__}] Obtained access token! I can now ask fot the authenticated"
                         f" extended card...{RESET}")
         except httpx.HTTPStatusError as e:

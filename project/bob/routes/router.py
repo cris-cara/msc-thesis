@@ -1,8 +1,11 @@
+import json
 import os
 import uuid
 from functools import partial
 
 from didcomm.common.resolvers import ResolversConfig
+from didcomm.message import Message as DidcommMessage
+from didcomm.pack_encrypted import pack_encrypted, PackEncryptedConfig
 from didcomm.unpack import unpack
 from dotenv import load_dotenv
 from starlette.requests import Request
@@ -12,14 +15,43 @@ from starlette.routing import Route, Router
 from a2a_didauth.core.session import DIDAuthSessionResolverDemo, NonceDIDAuthStatus
 from bob.helpers import auth_utils as auth
 from bob.routes.utils import fetch_callback
+from common import config
 from .utils import *
 
 # =================== CONFIG ===================
 load_dotenv(".env", override=True)
+cfg = config()
 
 _db = SessionDB(path="bob/vc_sessions.sqlite3")
 CALLBACK_API_KEY = os.getenv("CALLBACK_API_KEY", "<api-key>")
+ALICE_DID = cfg["DIDs"]["alice"]
+BOB_DID = cfg["DIDs"]["bob"]
 # ==============================================
+
+async def _encapsulate_token_in_didcomm_msg(token: str, resolvers_cfg: ResolversConfig) -> dict:
+    """ Encapsulate the access token in a DIDComm message."""
+    didcomm_token_env = DidcommMessage(
+        id=str(uuid.uuid4()),
+        type="example/1.0/access-token-response",
+        body={"access_token": token},
+        frm=BOB_DID,  # BOB DID
+        to=[ALICE_DID],
+    )
+
+    pack_result = await pack_encrypted(
+        resolvers_config=resolvers_cfg,
+        message=didcomm_token_env,
+        frm=BOB_DID,  # BOB DID
+        to=ALICE_DID,
+        sign_frm=None,
+        pack_config=PackEncryptedConfig(
+            protect_sender_id=False,
+            forward=False,
+        ),
+    )
+
+    # packed_msg is a JSON string with JWE
+    return json.loads(pack_result.packed_msg)
 
 async def _get_presentation_request(request: Request) -> JSONResponse:
     """
@@ -215,7 +247,10 @@ async def _get_access_token(request: Request, resolvers_cfg: ResolversConfig) ->
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
-    return JSONResponse({"access_token": token, "token_type": "Bearer"})
+    #! encapsulate the access token in a DIDComm message
+    response = await _encapsulate_token_in_didcomm_msg(token=token, resolvers_cfg=resolvers_cfg)
+
+    return JSONResponse(response, status_code=200)
 
 def build_router(resolver_config: ResolversConfig) -> Router:
     """Builds the Starlette router for the HTTP API endpoints."""

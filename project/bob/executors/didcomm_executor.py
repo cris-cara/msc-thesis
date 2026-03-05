@@ -106,7 +106,7 @@ class DIDCommExecutor(AgentExecutor):
         self.system_prompt = SYSTEM_PROMPT
         self.messages = [{"role": "system", "content": self.system_prompt}] # initialize LLM's messages list
 
-    async def _authorize_and_process_weather_request(self, token: Optional[str], user_msg: str) -> Dict[str, Any]:
+    async def _authorize_and_process_weather_request(self, token: Optional[str], sender_did: str, user_msg: str) -> Dict[str, Any]:
         """
         Validates the provided access token and, if authorized, queries the LLM to produce the weather response.
 
@@ -119,53 +119,67 @@ class DIDCommExecutor(AgentExecutor):
         # GATE: check the token
         if not token:
             logger.info(f"{RED}Request blocked: no token provided.{RESET}")
-            response_content = {
+            return {
                 "error": "Unauthorized",
                 "details": "Missing access_token. Please perform VP login first."
             }
 
-        elif not auth.verify_token(token):
+        # GATE 2: check token validity (signature/expiry)
+        if not auth.verify_token(token):
             logger.info(f"{RED}Request blocked: invalid or expired token.{RESET}")
-            response_content = {
+            return {
                 "error": "Unauthorized",
                 "details": "Invalid or expired token."
             }
 
-        else:
-            # 3) IF AUTHORIZED -> Call the LLM
-            logger.info(f"{GREEN}Valid token. Executing weather request...{RESET}")
-            try:
-                llm_output = await self._query_llm(input_msg=user_msg)
-                response_content = {"weather": llm_output}
-            except Exception as e:
-                response_content = {"error": "Processing error", "details": str(e)}
+        #! GATE 3: identity binding
+        #! check if the "sender_did" in the DIDComm message matches the "sub" field in the token
+        try:
+            subject_token = auth.retrieve_sub_from_token(token=token)
+        except Exception:
+            logger.info(f"{RED}Request blocked: cannot read token subject.{RESET}")
+            return {
+                "error": "Unauthorized",
+                "details": "Token subject missing or malformed."
+            }
 
-        return response_content
+        if subject_token != sender_did:
+            logger.info(f"{RED}Request blocked: mismatch token subject -- sender's DID.{RESET}")
+            return {
+                "error": "Unauthorized",
+                "details": "Token subject does not match the sender DID in the DIDComm message."
+            }
+
+        # IF AUTHORIZED -> Call the LLM
+        logger.info(f"{GREEN}Valid token. Executing weather request...{RESET}")
+        try:
+            llm_output = await self._query_llm(input_msg=user_msg)
+            return {"weather": llm_output}
+        except Exception as e:
+            return {"error": "Processing error", "details": str(e)}
 
     async def _query_llm(self, input_msg: str):
         """
-        Queries the Large Language Model (LLM) with a user-provided message and processes the
-        response accordingly. The function loops until the LLM produces a final response
-        without invoking additional tool calls.
+        Queries the language model (LLM) with a user message and retrieves a response.
 
-        Attributes:
-            messages (list[dict]): A list of dictionaries representing the conversation
-            history. Each entry contains the role (e.g., 'user', 'assistant'), the
-            message content, and associated tool calls if any.
-            llm (object): A reference to the LLM client used to generate responses.
-            deployment (str): The specific deployment of the LLM model to use.
-            hub (object): A reference to the hub that provides access to tools
-            and manages interactions with the LLM's tool calls.
+        This asynchronous method processes user inputs, interacts with the specified
+        LLM deployment, and evaluates responses iteratively. It integrates with tools
+        specified in the configuration, such as weather-related tools, in order to
+        enhance the system's capabilities. The method ensures that the assistant's
+        response is maintained throughout each interaction round, enabling dynamic
+        user queries and tool-based extensions.
 
         Parameters:
-            input_msg (str): The message provided by the user to query the LLM.
-
-        Raises:
-            RuntimeError: If the LLM does not produce any valid response after processing.
+        input_msg: str
+            The user's input message to be sent to the LLM for processing.
 
         Returns:
-            str: The final LLM response to the user's query after processing all
-            intermediate tool calls.
+        str
+            The final response from the LLM after all interactions and tool evaluations.
+
+        Raises:
+        RuntimeError
+            If the LLM fails to generate a response for the provided input message.
         """
 
         self.messages.append({"role": "user", "content": input_msg})
@@ -217,6 +231,7 @@ class DIDCommExecutor(AgentExecutor):
                 packed_msg=jwe_str,
             )
 
+            sender_did = unpack_result.metadata.encrypted_from.split("#", 1)[0] #! it must be Alice DID
             user_msg = unpack_result.message.body.get("message") # ex. "Ciao Bob, quale è il meteo a <city>?""
             logger.info(f"{BLUE}[USER]: {user_msg}{RESET}")
             # extract the token from the DIDComm message body
@@ -226,7 +241,7 @@ class DIDCommExecutor(AgentExecutor):
 
         # 2) authorize and process the weather request (check if the token presented by the user is valid)
         logger.info(f"{BLUE}[TOKEN]: {token}{RESET}")
-        response_content = await self._authorize_and_process_weather_request(token=token, user_msg=user_msg)
+        response_content = await self._authorize_and_process_weather_request(token=token, sender_did=sender_did, user_msg=user_msg)
 
         # 3) build DIDComm response
         reply = DidcommMessage(
