@@ -1,3 +1,6 @@
+#* Imagine that there's a MITM Eve that begins the A2ADIDAuth interaction using its DID and key material, but then
+#* in the JWS challenge response she uses Alice's DID to try an impersonation attack in the last phase
+
 import ssl
 import sys
 import uuid
@@ -13,10 +16,10 @@ from alice.__main__ import Alice
 from common import rehydrate_after_mcp_tool_call
 from common.agents import Agent
 from common.config import config
+from eve.__main__ import Eve
 
 # =================== CONFIG ===================
 BOOT = Path(__file__).resolve().parent / "_run_waltid_server.py"
-IMPERSONATION_DID = "did:jwk:eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2Iiwia2lkIjoiUkx2eTIyTDZLcG5SNnd5T1BOelktNUdPcHVwS3hhQzdpRGdXcE4xSk9UQSIsIngiOiJ3TGI1OFdBZGhGalhmXzBUMUJLNmRzVGZ3VWRFODhUdmJwV2U1VFo1c0VVIiwieSI6IndUN01nWW16UGJHaFBpTzFEaklZTk9LdS1DYUoxY2U4d2pweTJfQmhPV1EifQ"
 
 cfg = config()
 BOB_BASE_URL = cfg["A2A"]["bob_base_url"]
@@ -55,30 +58,43 @@ async def alice():
 
     yield alice
 
+@pytest_asyncio.fixture
+async def eve():
+    """ Initialize Eve agent."""
+    eve = Eve()
+    await eve.mcp_connect(
+        command=sys.executable,
+        args=[str(BOOT)],
+    )
+    await eve.sign_in()
+    eve.set_resolvers_config()
+
+    yield eve
+
 @pytest.mark.asyncio
-async def test_impersonation(alice: Agent, bob_https: httpx.AsyncClient):
+async def test_impersonation(alice: Agent, eve: Agent, bob_https: httpx.AsyncClient):
     A2ADidAuthService.set_ext_uri(ext_uri=EXT_URI)
     A2ADidAuthService.set_client(client=bob_https)
 
     #* - A2ADIDAuth: PHASE 1
     nonce = str(uuid.uuid4())
     resp = await A2ADidAuthService.send_did_auth_request(
-        client_did=alice.did,
+        client_did=eve.did,
         nonce=nonce
     )
 
     #* - A2ADIDAuth: PHASE 3 and 4
     # retrieve the private key from waltid wallet
-    result = await alice.mcp_session.call_tool(
+    result = await eve.mcp_session.call_tool(
         name="export_key_jwk",
-        arguments={"session": alice.waltid_session, "load_private": True}
+        arguments={"session": eve.waltid_session, "load_private": True}
     )
     private_key = rehydrate_after_mcp_tool_call(result, dict)
 
     with pytest.raises(A2ADidAuthError) as exif:
         await A2ADidAuthService.send_did_auth_response(
             a2a_resp=resp,
-            client_did=IMPERSONATION_DID, #! IMP. change DID to simulate impersonation attack
+            client_did=alice.did, #! IMP. change DID (insert Alice DID) to simulate an impersonation attack
             nonce=nonce,
             signing_key_jwk=private_key,
         )
